@@ -1,0 +1,256 @@
+---
+title: "Horseshoe Prior Models"
+author: "Li Shandross"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(bayesplot)
+library(tidybayes)
+# install.packages("rstanarm")
+library(rstanarm)
+library(brms)
+library(arm)
+library(patchwork)
+```
+
+```{r}
+# Reading in data
+set.seed(1234)
+heart <- read.csv("heart_failure_clinical_records_dataset.csv")
+heartt <- heart[sample(nrow(heart), 100), ]
+heartt
+```
+
+
+(Original) Horseshoe
+```{r}
+# Validation Test
+D_test <- ncol(heartt) - 1
+n_test <- nrow(heartt)
+p0_test <- 2 # prior guess for the number of relevant variables
+sigma_test <- 1 / sqrt(mean(heartt$DEATH_EVENT) * (1-mean(heartt$DEATH_EVENT))) # pseudo sigma
+tau0_test <- p0_test/(D_test-p0_test) * sigma_test/sqrt(n_test)
+prior_coeff_test <- hs(df=1, global_df=1, global_scale = tau0_test) # tau ∼ half-Cauchy (0, tau0_test^2)
+
+hs_mod_test <- stan_glm(DEATH_EVENT ~ ., 
+                        data = heartt, 
+                        family = binomial(), 
+                        prior = prior_coeff_test,
+                        chains = 4, 
+                        iter = 200,
+                        warmup = 50,
+                        cores = getOption("mc.cores", 6), 
+                        algorithm = "sampling")
+
+summary(hs_mod_test)
+```
+
+```{r}
+D <- ncol(heart) - 1
+n <- nrow(heart)
+p0 <- 2 # prior guess for the number of relevant variables
+sigma <- 1 / sqrt(mean(heart$DEATH_EVENT) * (1-mean(heart$DEATH_EVENT))) # pseudo sigma
+tau0 <- p0/(D-p0) * sigma/sqrt(n)
+prior_coeff <- hs(df=1, global_df=1, global_scale = tau0) # tau ∼ half-Cauchy (0, tau0^2)
+
+# prior predictive check
+hs_mod_prior <- stan_glm(DEATH_EVENT ~ ., 
+                        data = heart, 
+                        family = binomial(), 
+                        prior = prior_coeff,
+                        prior_PD = TRUE,
+                        chains = 4, 
+                        iter = 2000,
+                        warmup = 500,
+                        cores = getOption("mc.cores", 6), 
+                        algorithm = "sampling")
+summary(hs_mod_prior)
+
+# Are prior predictive checks different for either logistic regression or the use of horseshoe priors?
+prior_ynew_si <- posterior_predict(hs_mod_prior)
+dim(prior_ynew_si)
+ht_si <- as_tibble((t(prior_ynew_si[1:10,])),.name_repair = "unique")
+
+prior_ejection_plot <- ht_si %>% 
+  mutate(ejection_fraction = heart$ejection_fraction, observed_data = heart$DEATH_EVENT)%>%
+  pivot_longer(-c(ejection_fraction, observed_data)) %>%
+  ggplot(aes(x = ejection_fraction, y = value), alpha = 0.5) + # value is DEATH_EVENT
+  geom_point() +
+  geom_jitter(height=0.1, width=0) +
+  geom_point(aes(y = observed_data), color = "red", alpha = 0.5) +
+  scale_color_brewer(palette = "Set1") +
+  theme_bw(base_size = 14) +
+  ggtitle("death v ejection fraction")
+  
+prior_creatinine_plot <- ht_si %>% 
+  mutate(serum_creatinine = heart$serum_creatinine, observed_data = heart$DEATH_EVENT)%>%
+  pivot_longer(-c(serum_creatinine, observed_data)) %>%
+  ggplot(aes(x = serum_creatinine, y = value), alpha = 0.5) + # value is DEATH_EVENT
+  geom_point() +
+  geom_jitter(height=0.1, width=0) +
+  geom_point(aes(y = observed_data), color = "red", alpha = 0.5) +
+  scale_color_brewer(palette = "Set1") +
+  theme_bw(base_size = 14) +
+  ggtitle("death v serum creatinine")
+
+prior_ejection_plot + prior_creatinine_plot +
+  plot_annotation(title = 'Prior Predictive Checks') +
+  plot_layout(ncol = 2, guides='collect') &
+  theme(legend.position='bottom')
+```
+
+The prior is generating data within reasonable bounds.  
+  
+```{r}
+# fit the model
+if(file.exists("output/hs_mod.rds")){
+	hs_mod <- read_rds("output/hs_mod.rds")
+} else {
+	hs_mod <- stan_glm(DEATH_EVENT ~ ., 
+                        data = heart, 
+                        family = binomial(), 
+                        prior = prior_coeff,
+                        chains = 4, 
+                        iter = 2000,
+                        warmup = 1000,
+                        control = list(max_treedepth = 20),
+                        cores = getOption("mc.cores", 6), 
+                        algorithm = "sampling")
+	saveRDS(hs_mod, file = "output/hs_mod.rds")
+}
+
+summary(hs_mod)
+```
+
+Prior-Posterior Comparison
+```{r}
+comp_plot_alpha <- posterior_vs_prior(hs_mod, color_by="parameter", pars="alpha")
+comp_plot_beta <- posterior_vs_prior(hs_mod, color_by="parameter", pars="beta")
+
+comp_plot_alpha + comp_plot_beta +
+  plot_annotation(title = 'Prior Posterior Comparison') +
+  plot_layout(ncol = 2, guides='collect') &
+  theme(legend.position='bottom')
+```
+
+
+```{r}
+# Posterior prediction
+ynew_si <- posterior_predict(hs_mod)
+
+# Point estimates for all models
+ytilde <- apply(ynew_si, 2, mean)
+
+# Residuals for all models
+res <- heart$DEATH_EVENT - ytilde
+```
+
+```{r}
+# Model residuals plotted against age, binned
+binnedplot(heart$age, res,
+           xlab = "Age",
+           main = "Horseshoe model residuals plotted against age")
+
+# Model residuals plotted against ejection fraction, binned
+binnedplot(heart$ejection_fraction, res,
+           xlab = "Ejection fraction",
+           main = "Horseshoe model residuals plotted against ejection fraction")
+
+# Model residuals plotted against log serum creatinine, binned
+binnedplot(log(heart$serum_creatinine), res,
+           xlab = "Serum creatinine",
+           main = "Horseshoe model residuals plotted against log serum creatinine")
+```
+
+(All of the models underpredict death at low ejection fraction levels. So, a posterior predictive check should be done for ejection fraction at or below 25. )
+
+ 
+Posterior predictive checks
+```{r}
+# T_1: prop(DEATH_EVENT == 0)
+true_t1 <- mean(heart$DEATH_EVENT == 0)
+hs_t1 <- sapply(1:nrow(ynew_si), function(x) mean(ynew_si[x,] == 0))
+
+(t1_plot <- ggplot(data = as_tibble(hs_t1), aes(value)) + 
+    geom_histogram(aes(fill = "replicated")) + 
+    geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue"))+
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")))
+
+mean(hs_t1 >= true_t1)
+```
+
+```{r}
+# T_2: prop(DEATH_EVENT == 0 | ejection_fraction > 40)
+ynew_ejection <- t(ynew_si) %>%
+	as_tibble() %>%
+	cbind(heart$ejection_fraction) %>%
+	filter(`heart$ejection_fraction` > 40)
+hs_t2 <- sapply(1:(ncol(ynew_ejection)-1), FUN = function(x) mean(ynew_ejection[,x] == 0))
+
+true_t2 <- nrow(filter(heart, DEATH_EVENT==0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+ 
+(t2_plot <- ggplot(data = as_tibble(hs_t2), aes(value)) + 
+    geom_histogram(aes(fill = "replicated")) + 
+    geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue"))+
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")))
+
+mean(hs_t2 >= true_t2)
+```
+
+```{r}
+# T_3: prop(DEATH_EVENT == 0 | serum_creatinine < 1.2)
+ynew_creatinine <- t(ynew_si) %>%
+	as_tibble() %>%
+	cbind(heart$serum_creatinine) %>%
+	filter(`heart$serum_creatinine` < 1.2)
+hs_t3 <- sapply(1:(ncol(ynew_creatinine)-1), FUN = function(x) mean(ynew_creatinine[,x] == 0))
+
+true_t3 <- nrow(filter(heart, DEATH_EVENT==0, serum_creatinine < 1.2)) / nrow(filter(heart, serum_creatinine < 1.2))
+ 
+(t3_plot <- ggplot(data = as_tibble(hs_t3), aes(value)) + 
+    geom_histogram(aes(fill = "replicated")) + 
+    geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue"))+
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")))
+
+mean(hs_t3 >= true_t3)
+```
+
+
+LOO cross-validation
+```{r}
+# Pareto k estimates
+(loo_res <- loo(hs_mod, save_psis = TRUE))
+plot(loo_res,
+  diagnostic = c("k"),
+  label_points = TRUE,
+  main = "PSIS diagnostic plot"
+)
+```
+
+```{r}
+# LOO-PIT plot 
+psis <- loo_res$psis_object
+lw <- weights(psis) 
+ppc_loo_pit_overlay(y = heart$DEATH_EVENT, ynew_si, lw = lw)
+```
+
+```{r}
+# ELPDs
+# elpd_diff <- loo_res2$pointwise[, "elpd_loo"] - loo_res$pointwise[, "elpd_loo"] 
+# ds %>% cbind(elpd_diff) %>%	
+# 	ggplot(aes(x=log_gest, y=elpd_diff)) +
+# 	geom_point()
+```
