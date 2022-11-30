@@ -232,7 +232,7 @@ binnedplot(heart$ejection_fraction, resfull,
 ```{r}
 # Full model residuals plotted against log serum creatinine, binned
 binnedplot(log(heart$serum_creatinine), resfull,
-           xlab = "Serum creatinine",
+           xlab = "log(serum creatinine)",
            main = "Full model residuals plotted against log serum creatinine")
 ```
 
@@ -241,6 +241,13 @@ binnedplot(log(heart$serum_creatinine), resfull,
 binnedplot(heart$ejection_fraction, resint,
            xlab = "Ejection fraction",
            main = "Intercept-only model residuals plotted against ejection fraction")
+```
+
+```{r}
+# Intercept-only model plotted against log serum creatinine
+binnedplot(log(heart$serum_creatinine), resint,
+           xlab = "log(serum creatinine)",
+           main = "Intercept-only model residuals plotted against log serum creatinine")
 ```
 
 ```{r}
@@ -253,7 +260,7 @@ binnedplot(heart$ejection_fraction, resred,
 ```{r}
 # Reduced model plotted against log serum creatinine
 binnedplot(log(heart$serum_creatinine), resred,
-           xlab = "Serum creatinine",
+           xlab = "log(serum creatinine)",
            main = "Reduced model residuals plotted against log serum creatinine")
 ```
 
