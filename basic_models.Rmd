@@ -7,6 +7,7 @@ output: html_notebook
 library(tidyverse)
 library(brms)
 library(arm)
+library(loo)
 ```
 
 ```{r}
@@ -190,6 +191,8 @@ redmod <- brm(formula = DEATH_EVENT ~ ejection_fraction + serum_creatinine,
 summary(redmod)
 ```
 
+## In-Sample Model Checking
+
 ```{r}
 # Posterior prediction for full model, intercept-only model, 
 # and reduced model
@@ -285,3 +288,261 @@ abline(v = tobs)
 ```
 
 Based on these in-sample model checks, it seems that the full model actually performs a bit better than the reduced model, unlike the reference paper. This is a bit unsurprising, however, as the full model is more informed by the data than the reduced model. 
+
+## Out-of-Sample Model Checking
+
+## LOO Cross-Validation
+
+```{r}
+# Pareto k estimates, full model
+loo_full <- loo(fullmod, save_psis = TRUE)
+loo_full
+```
+
+```{r}
+# Pareto k estimates, intercept-only model
+loo_int <- loo(intmod, save_psis = TRUE)
+loo_int
+```
+
+```{r}
+# Pareto k estimates, reduced model
+loo_red <- loo(redmod, save_psis = TRUE)
+loo_red
+```
+
+```{r}
+# PSIS plot, full model
+plot(loo_full,
+     diagnostic = c("k"),
+     label_points = TRUE, 
+     main = "PSIS diagnositc plot - full model")
+```
+
+```{r}
+# PSIS plot, intercept-only model
+plot(loo_int,
+     diagnostic = c("k"),
+     label_points = TRUE, 
+     main = "PSIS diagnostic plot, intercept-only model")
+```
+
+```{r}
+# PSIS plot, reduced model
+plot(loo_red,
+     diagnostic = c("k"),
+     label_points = TRUE, 
+     main = "PSIS diagnostic plot, reduced model")
+```
+
+## Test statistics
+
+## T1: Proportion of Survival 
+
+```{r}
+# Full model
+true_t1 <- mean(heart$DEATH_EVENT == 0)
+hs_t1full <- sapply(1:nrow(ynewfull), function(x) mean(ynewfull[x, ] == 0))
+
+t1_plotfull <- ggplot(data = as_tibble(hs_t1full), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion, full model") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+t1_plotfull
+```
+
+```{r}
+mean(hs_t1full >= true_t1)
+```
+
+```{r}
+# Intercept-only model
+true_t1 <- mean(heart$DEATH_EVENT == 0)
+hs_t1int <- sapply(1:nrow(ynewint), function(x) mean(ynewint[x, ] == 0))
+
+t1_plotint <- ggplot(data = as_tibble(hs_t1int), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion, intercept-only model") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+t1_plotint
+```
+
+```{r}
+mean(hs_t1int >= true_t1)
+```
+
+```{r}
+# Reduced model
+true_t1 <- mean(heart$DEATH_EVENT == 0)
+hs_t1red <- sapply(1:nrow(ynewred), function(x) mean(ynewred[x, ] == 0))
+
+t1_plotred <- ggplot(data = as_tibble(hs_t1red), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion, reduced model") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+t1_plotred
+```
+
+```{r}
+mean(hs_t1red >= true_t1)
+```
+
+## T2: Proportion of Survival Among Patients with Ejection Fraction >40 Percent
+
+```{r}
+# Full model
+ynew_ejecfull <- t(ynewfull) %>% 
+  as_tibble() %>% 
+  cbind(heart$ejection_fraction) %>% 
+  filter(`heart$ejection_fraction` > 40)
+
+true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+hs_t2full <- sapply(1:(ncol(ynew_ejecfull) - 1), FUN = function(x) mean(ynew_ejecfull[, x] == 0))
+
+t2_plotfull <- ggplot(data = as_tibble(hs_t2full), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients w/ ejection fraction >40%, full model") + 
+  theme_bw(base_size = 12) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t2_plotfull
+```
+
+```{r}
+mean(hs_t2full >= true_t2)
+```
+
+```{r}
+# Intercept-only model
+ynew_ejecint <- t(ynewint) %>% 
+  as_tibble() %>% 
+  cbind(heart$ejection_fraction) %>% 
+  filter(`heart$ejection_fraction` > 40)
+
+true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+hs_t2int <- sapply(1:(ncol(ynew_ejecint) - 1), FUN = function(x) mean(ynew_ejecint[, x] == 0))
+
+t2_plotint <- ggplot(data = as_tibble(hs_t2int), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients w/ ejection fraction >40%, intercept-only model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t2_plotint
+```
+
+```{r}
+mean(hs_t2int >= true_t2)
+```
+
+```{r}
+# Reduced model
+ynew_ejecred <- t(ynewred) %>% 
+  as_tibble() %>% 
+  cbind(heart$ejection_fraction) %>% 
+  filter(`heart$ejection_fraction` > 40)
+
+true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+hs_t2red <- sapply(1:(ncol(ynew_ejecred) - 1), FUN = function(x) mean(ynew_ejecred[, x] == 0))
+
+t2_plotred <- ggplot(data = as_tibble(hs_t2red), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients w/ ejection fraction >40%, reduced model") + 
+  theme_bw(base_size = 11) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t2_plotred
+```
+
+```{r}
+mean(hs_t2red >= true_t2)
+```
+
+## T3: Proportion of Survival Among Patients with Serum Creatinine <1.2
+
+```{r}
+# Full model
+ynew_creafull <- t(ynewfull) %>% 
+  as_tibble() %>% 
+  cbind(heart$serum_creatinine) %>% 
+  filter(`heart$serum_creatinine` < 1.2)
+
+true_t3 <- nrow(filter(heart, DEATH_EVENT == 0, serum_creatinine < 1.2)) / nrow(filter(heart, serum_creatinine < 1.2))
+hs_t3full <- sapply(1:(ncol(ynew_creafull) - 1), FUN = function(x) mean(ynew_creafull[, x] == 0))
+
+t3_plotfull <- ggplot(data = as_tibble(hs_t3full), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients with serum creatinine < 1.2, full model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t3_plotfull
+```
+
+```{r}
+mean(hs_t3full >= true_t3)
+```
+
+```{r}
+# Intercept-only model
+ynew_creaint <- t(ynewint) %>% 
+  as_tibble() %>% 
+  cbind(heart$serum_creatinine) %>% 
+  filter(`heart$serum_creatinine` < 1.2)
+
+true_t3 <- nrow(filter(heart, DEATH_EVENT == 0, serum_creatinine < 1.2)) / nrow(filter(heart, serum_creatinine < 1.2))
+hs_t3int <- sapply(1:(ncol(ynew_creaint) - 1), FUN = function(x) mean(ynew_creaint[, x] == 0))
+
+t3_plotint <- ggplot(data = as_tibble(hs_t3int), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients with serum creatinine < 1.2, intercept-only model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t3_plotint
+```
+
+```{r}
+mean(hs_t3int >= true_t3)
+```
+
+```{r}
+# Reduced model
+ynew_creared <- t(ynewred) %>% 
+  as_tibble() %>% 
+  cbind(heart$serum_creatinine) %>% 
+  filter(`heart$serum_creatinine` < 1.2)
+
+true_t3 <- nrow(filter(heart, DEATH_EVENT == 0, serum_creatinine < 1.2)) / nrow(filter(heart, serum_creatinine < 1.2))
+hs_t3red <- sapply(1:(ncol(ynew_creared) - 1), FUN = function(x) mean(ynew_creared[, x] == 0))
+
+t3_plotred <- ggplot(data = as_tibble(hs_t3red), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients with serum creatinine < 1.2, reduced model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t3_plotred
+```
+
+```{r}
+mean(hs_t3red >= true_t3)
+```
+
+
+
