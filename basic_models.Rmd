@@ -8,6 +8,11 @@ library(tidyverse)
 library(brms)
 library(arm)
 library(loo)
+library(bayesplot)
+library(tidybayes)
+library(rstanarm)
+library(patchwork)
+library(ROCR)
 ```
 
 ```{r}
@@ -146,11 +151,11 @@ fullmod <- brm(formula = DEATH_EVENT ~ .,
                 data = heart,
                 family = bernoulli(link = "logit"),
                 chains = 4, 
-                iter = 1000,
-                warmup = 500,
+                iter = 2000,
+                warmup = 1000,
                control = list(max_treedepth = 20),
-                cores = getOption("mc.cores", 4), 
-                file = "output/fullmod3")
+                cores = getOption("mc.cores", 12), 
+                file = "output/fullmod4")
 ```
 
 ```{r}
@@ -163,11 +168,11 @@ intmod <- brm(formula = DEATH_EVENT ~ 1,
                 data = heart,
                 family = bernoulli(link = "logit"),
                 chains = 4, 
-                iter = 1000,
-                warmup = 500,
+                iter = 2000,
+                warmup = 1000,
                control = list(max_treedepth = 20),
-                cores = getOption("mc.cores", 4), 
-                file = "output/intmod")
+                cores = getOption("mc.cores", 12), 
+                file = "output/intmod2")
 ```
 
 ```{r}
@@ -180,11 +185,11 @@ redmod <- brm(formula = DEATH_EVENT ~ ejection_fraction + serum_creatinine,
                 data = heart,
                 family = bernoulli(link = "logit"),
                 chains = 4, 
-                iter = 1000,
-                warmup = 500,
+                iter = 2000,
+                warmup = 1000,
                control = list(max_treedepth = 20),
-                cores = getOption("mc.cores", 4), 
-                file = "output/redmod")
+                cores = getOption("mc.cores", 12), 
+                file = "output/redmod2")
 ```
 
 ```{r}
@@ -550,6 +555,92 @@ t3_plotred
 ```{r}
 mean(hs_t3red >= true_t3)
 ```
+## Confusion Matrices and ROC Curves
 
+### Full Model 
 
+```{r}
+hs_confusion_fullmod <- tibble(metric = c("tn", "fp", "fn", "tp"))
+for(i in 1:4000){
+  hs_pred_tempfull <- ynewfull[i, ]
+  hs_confusion_tempfull <- tibble(death = heart$DEATH_EVENT, preds = hs_pred_tempfull) %>% 
+    group_by(death, preds) %>% 
+    summarize(n = n())
+  hs_confusion_fullmod[[i+1]] <- hs_confusion_tempfull$n
+}
+
+hs_confusion_matrixfull <- pivot_longer(hs_confusion_fullmod, cols = 2:4001, names_to = "sample", values_to = "value") %>% 
+  pivot_wider(names_from = "metric", values_from = "value") %>% 
+  mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299), mcc = (tn *tp-fn* fp) / sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+```
+
+```{r}
+hs_confusion_matrixfull %>% 
+  summarize(mean_tnr = mean(tnr), mean_tpr = mean(tpr), mean_accuracy = mean(accuracy), mean_mcc = mean(mcc))
+```
+
+```{r}
+predfull <- prediction(fitted(fullmod)[, 1], heart$DEATH_EVENT)
+perffull <- performance(predfull, "tpr", "fpr")
+plot(perffull)
+performance(predfull, "auc")@y.values[[1]]
+```
+
+### Intercept-Only Model
+
+```{r}
+hs_confusion_fullint <- tibble(metric = c("tn", "fp", "fn", "tp"))
+for(i in 1:4000){
+  hs_pred_tempint <- ynewint[i, ]
+  hs_confusion_tempint <- tibble(death = heart$DEATH_EVENT, preds = hs_pred_tempint) %>% 
+    group_by(death, preds) %>% 
+    summarize(n = n())
+  hs_confusion_fullint[[i+1]] <- hs_confusion_tempint$n
+}
+
+hs_confusion_matrixint <- pivot_longer(hs_confusion_fullint, cols = 2:4001, names_to = "sample", values_to = "value") %>% 
+  pivot_wider(names_from = "metric", values_from = "value") %>% 
+  mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299), mcc = (tn *tp-fn* fp) / sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+```
+
+```{r}
+hs_confusion_matrixint %>% 
+  summarize(mean_tnr = mean(tnr), mean_tpr = mean(tpr), mean_accuracy = mean(accuracy), mean_mcc = mean(mcc))
+```
+
+```{r}
+predint <- prediction(fitted(intmod)[, 1], heart$DEATH_EVENT)
+perfint <- performance(predint, "tpr", "fpr")
+plot(perfint)
+performance(predint, "auc")@y.values[[1]]
+```
+
+### Reduced Model
+
+```{r}
+hs_confusion_fullred <- tibble(metric = c("tn", "fp", "fn", "tp"))
+for(i in 1:4000){
+  hs_pred_tempred <- ynewred[i, ]
+  hs_confusion_tempred <- tibble(death = heart$DEATH_EVENT, preds = hs_pred_tempred) %>% 
+    group_by(death, preds) %>% 
+    summarize(n = n())
+  hs_confusion_fullred[[i+1]] <- hs_confusion_tempred$n
+}
+
+hs_confusion_matrixred <- pivot_longer(hs_confusion_fullred, cols = 2:4001, names_to = "sample", values_to = "value") %>% 
+  pivot_wider(names_from = "metric", values_from = "value") %>% 
+  mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299), mcc = (tn *tp-fn* fp) / sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+```
+
+```{r}
+hs_confusion_matrixred %>% 
+  summarize(mean_tnr = mean(tnr), mean_tpr = mean(tpr), mean_accuracy = mean(accuracy), mean_mcc = mean(mcc))
+```
+
+```{r}
+predred <- prediction(fitted(redmod)[, 1], heart$DEATH_EVENT)
+perfred <- performance(predred, "tpr", "fpr")
+plot(perfred)
+performance(predred, "auc")@y.values[[1]]
+```
 
