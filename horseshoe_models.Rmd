@@ -15,6 +15,7 @@ library(rstanarm)
 library(brms)
 library(arm)
 library(patchwork)
+library("ROCR")
 ```
 
 ```{r}
@@ -244,7 +245,7 @@ plot(loo_res,
 # LOO-PIT plot 
 psis <- loo_res$psis_object
 lw <- weights(psis) 
-ppc_loo_pit_overlay(y = heart$DEATH_EVENT, ynew_si, lw = lw)
+# ppc_loo_pit_overlay(y = heart$DEATH_EVENT, ynew_si, lw = lw)
 ```
 
 ```{r}
@@ -253,4 +254,29 @@ ppc_loo_pit_overlay(y = heart$DEATH_EVENT, ynew_si, lw = lw)
 # ds %>% cbind(elpd_diff) %>%	
 # 	ggplot(aes(x=log_gest, y=elpd_diff)) +
 # 	geom_point()
+```
+
+```{r}
+hs_confusion_full <- tibble(metric=c("tn", "fp", "fn", "tp"))
+for (i in 1:4000) {
+	hs_pred_temp <- ynew_si[i,]
+	hs_confusion_temp <- tibble(death=heart$DEATH_EVENT, preds=hs_pred_temp) %>%
+		group_by(death, preds) %>%
+		summarize(n = n())
+	hs_confusion_full[[i+1]] <- hs_confusion_temp$n
+}
+
+hs_confusion_matrix <- pivot_longer(hs_confusion_full, cols = 2:4001, names_to = "sample", values_to = "value") %>%
+	pivot_wider(names_from = "metric", values_from = "value") %>%
+	mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299),
+			  mcc = (tn *tp-fn* fp)/sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))) 
+hs_confusion_matrix %>%
+	summarize(mean_tnr=mean(tnr), mean_tpr=mean(tpr), mean_accuracy=mean(accuracy), mean_mcc=mean(mcc))
+
+
+# construct ROC curve
+pred <- prediction(fitted(hs_mod), heart$DEATH_EVENT)
+perf <- performance(pred, "tpr", "fpr")
+plot(perf)
+performance(pred,"auc")@y.values[[1]]
 ```
