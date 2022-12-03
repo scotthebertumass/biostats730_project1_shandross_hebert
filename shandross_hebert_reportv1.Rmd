@@ -106,7 +106,8 @@ The horseshoe is a type of Bayesian prior (developed by ...) that serves as a sh
 We chose to explore usage of the horseshoe prior for several reasons. First, results from the reference paper showed that the models with ejection fraction and serum creatinine as the only predictors outperformed models using all predictors. This suggests that constraining coefficient estimates of unimportant predictors may yield better prediction accuracy. Second, as the horseshoe prior only shrinks coefficients of unsupported variables towards zero, it provides an interesting compromise between the reduced model and the full model described above. Third, the horseshoe prior was out of the scope of the Applied Bayesian Modeling class, and this project serves as an opportunity to learn how to apply a new type of prior.  
 
 ## Validation, sensitively analysis, and model comparison
-First, all models were run using samples of the full data set in order to tune the models. Certain aspects needed to be controlled to avoid divergence issues, including having 1,000 iterations in the models and setting the maximum tree depth to 20 (increased from the default value of 10). Then, the models were run on the full data set. 
+Before running the models on the full dataset, we first performed an initial test of each model on a smaller sample of the data with few iterations for some preliminary validation. The models passed these initial checks, allowing us to proceed with the chosen four models.   
+We began fitting the models using 1000 iterations with 500 as warm up, spread across four chains. However, this created warnings of divergence and low bulk ESS for the horseshoe prior model, though other MCMC diagnostics like Rhat values of 1.0 and n_eff values greater than 225 indicated increasing warm-up and the number of iterations would be sufficient to fix the problem. We chose to manually increase certain defaults for all of the models for consistency; for example, we used 1,000 warmup iterations and set maximum tree depth to 20 (increased from the default value of 10).  
 
 ### Full model
 
@@ -190,7 +191,20 @@ if(file.exists("output/hs_mod.rds")){
 summary(hs_mod)
 ```
 
-After the models were tuned and finalized, in-sample checks were completed on them. This included binned residual plots plotted against ejection fraction and serum creatinine (the two variables deemed most important by the reference paper the horseshoe prior model). A log transformation was completed on the serum creatinine variable in these plots for readibility.
+After the models were tuned and finalized, we performed in-sample checks. This included binned residual plots plotted against ejection fraction and serum creatinine (the two variables deemed most important by the reference paper the horseshoe prior model). A log transformation was completed on the serum creatinine variable in these plots for readibility. These binned residuals generally looked okay, though the no predictor model may have an issue of over predicting survival at low ejection fraction levels (see Appendix).  
+
+Following our assessment of residuals, we performed posterior predictive checks using three summary statistics. These test quantities were created to evaluate any discrepancies between the model simulations and the true data in terms of predicted survival proportions under three scenarios: overall, among patients with a normal ejection fraction, and among patients with normal serum creatinine levels. A healthy range for ejection fraction is defined as greater than 40% in the paper by Chicco & Jurman while a healthy serum creatinine level is less than 1.2 mg/dL (Mayo Clinic). The test statistics are labeled as follows:  
+
+- T1: Proportion of survival
+
+- T2: Proportion of survival among patients with an ejection fraction $> 40\%$  
+
+- T3: Proportion of survival among patients with serum creatinine < 1.2 mg/dL
+
+We then perform leave one out (LOO) cross-validation on the four models and use the resulting ELPD values, along with evaluation metrics like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models.  
+
+
+# Results
 
 ```{r, include = F}
 # Posterior prediction for full model, intercept-only model, 
@@ -283,14 +297,8 @@ binnedplot(log(heart$serum_creatinine), res,
            main = "Horseshoe model residuals plotted against log serum creatinine")
 ```
 
-Then, test statistics were created and assessed for all of the models. These statistics included: 
 
-- T1: Proportion of survival
-
-- T2: Proportion of survival among patients with an ejection fraction $> 40\%$ (based on a healthy range discussed in Chicco & Jurman)
-
-- T3: Proportion of survival among patients with serum creatinine < 1.2 mg/dL
-
+All four models showed very accurate predictions for survival proportion without restriction on type of patient (T1). However, predictions for survival among patients with a normal ejection fraction (T2) was overestimated by every model except for the intercept-only model, which under predicted survival for this group. However, the horseshoe prior model had the best posterior predictive p-value of 0.766 by about 0.07. For T3, the proportion of survival for patients with normal serum creatinine levels, all models performed more similarly by underestimating survival proportion with all predictive p-values less than 0.25.  
 Shown here is T2 for all of the models. For that test statistic, the full model has a predictive p-value of 0.836, the reduced model 0.940, the intercept-only model 0.094, and the horseshoe model 0.766. The horseshoe model performed the best in the case of patients with ejection fraction $> 40\%$.
 
 ### Full model 
