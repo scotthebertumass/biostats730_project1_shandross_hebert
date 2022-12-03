@@ -45,6 +45,7 @@ This project utilizes the same dataset as Chicco & Jurman, but it utilizes a Bay
 
 
 # Methods 
+## Choice of models and model equations
 We chose to compare four total models to better examine which aspects of the Bayesian models contribute to model accuracy. 
   
 First, a Bayesian logistic regression model with all predictors was formulated: 
@@ -62,7 +63,7 @@ An intercept-only model was created for reference:
 $y_i \sim Bern(\theta_i)$   
 $logit(\theta_i) = \beta_0$ 
 
-Last, a model with horseshoe priors was formulated as a method of variable selection: 
+Lastly, a model with horseshoe priors was formulated as a method of variable selection: 
 
 $y_i \sim Bern(\theta_i)$   
 $logit(\theta_i) = \beta_0 + \beta_1 a_i + \beta_2 m_i + \beta_3 h_i + \beta_4 k_i + \beta_5 d_i + \beta_6 e_i + \beta_7 p_i + \beta_8 x_i + \beta_9 c_i + \beta_{10} s_i + \beta_{11} g_i$   
@@ -70,7 +71,9 @@ $\beta_0 \sim N(0, 1)$
 $\beta_j | \lambda_j, \tau \sim N(0, \lambda_j \tau)$   
 $\lambda_j \sim C^+(0, 1)$, $j=1, \cdots, P$   
 $\tau \sim C^+(0, \tau_0)$ where $\tau_0 = \frac{p_0}{P-p_0} \frac{\sigma}{\sqrt{n}}$   
-We approximate $\sigma$ with pseudo variance $\tilde{\sigma}^2=1/\mu(1-\mu)$ for non-gaussian link  
+$\sigma$ is approximated with pseudo variance $\tilde{\sigma}^2=1/\mu(1-\mu)$ for a non-gaussian link  
+
+(Horseshoe priors are described further in the Horseshoe priors subsection.)  
 
 where:
 
@@ -96,8 +99,13 @@ si refers to serum sodium in mEq/L,
 
 gi refers to whether the patient smokes
 
-# Methods
 
+# Methods
+## Horseshoe priors
+The horseshoe is a type of Bayesian prior (developed by ...) that serves as a shrinkage method to improve model fit. This prior is named for its U-shape that resembles a horseshoe and determines the constraints on coefficient estimates. Coefficients associated with predictors weakly supported by the data are shrunk very close to zero while coefficients more strongly supported by the data experience minimal shrinkage.  
+We chose to explore usage of the horseshoe prior for several reasons. First, results from the reference paper showed that the models with ejection fraction and serum creatinine as the only predictors outperformed models using all predictors. This suggests that constraining coefficient estimates of unimportant predictors may yield better prediction accuracy. Second, as the horseshoe prior only shrinks coefficients of unsupported variables towards zero, it provides an interesting compromise between the reduced model and the full model described above. Third, the horseshoe prior was out of the scope of the Applied Bayesian Modeling class, and this project serves as an opportunity to learn how to apply a new type of prior.  
+
+## Validation, sensitively analysis, and model comparison
 First, all models were run using samples of the full data set in order to tune the models. Certain aspects needed to be controlled to avoid divergence issues, including having 1,000 iterations in the models and setting the maximum tree depth to 20 (increased from the default value of 10). Then, the models were run on the full data set. 
 
 ### Full model
