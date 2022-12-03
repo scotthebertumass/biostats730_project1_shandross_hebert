@@ -1,0 +1,435 @@
+---
+title: "Survival Prediction After Heart Failure"
+author: "Li Shandross and Scott Hebert"
+date: '2022-12-02'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+```{r, include = FALSE}
+library(tidyverse)
+library(bayesplot)
+library(tidybayes)
+library(rstanarm)
+library(brms)
+library(arm)
+library(patchwork)
+library(ROCR)
+library(pander)
+```
+
+```{r, include = FALSE}
+# Reading in data
+set.seed(1234)
+heart <- read.csv("heart_failure_clinical_records_dataset.csv")
+heartt <- heart[sample(nrow(heart), 100), ]
+head(heartt)
+```
+
+# Abstract
+
+[maximum 200 words]
+
+# Introduction
+
+Cardiovascular disease (CVD) accounts for roughly 17,000,000 millions deaths worldwide annually. Current evaluation of the disease progression in various CVDs currently is lacking. Specifically, one example is heart failure -- heart failure outcome prediction is of vital importance in clinical practice throughout the world, yet such prediction has not yet yielded promising results. A study by Chicco & Jurman highlighted the potential of machine learning methods to provide physicians with better tools to predict heart failure patient outcomes. The study used data of 299 patients with heart failure. The study included 10 machine learning methods, of which Random Forests performed the best. Afterward, the study authors performed feature selection, which found that serum creatinine and ejection fraction were the best predictors, and a Random Forests model (and one other machine learning model) using only those two predictors outperformed models with all available predictors, which also included age, anaemia, high blood pressure, blood creatinine phosphokinase, diabetes, blood platelets, sex, serum sodium, and smoking status. 
+
+This project utilizes the same dataset as Chicco & Jurman, but it utilizes Bayesian logistic regression methods in order to compare those Bayesian methods to the machine learning methods from the reference paper. 
+
+# Models 
+
+First, a Bayesian logistic regression model with all predictors was formulated: 
+
+$y_i \sim Bern(\theta_i)$   
+$logit(\theta_i) = \beta_0 + \beta_1 a_i + \beta_2 m_i + \beta_3 h_i + \beta_4 k_i + \beta_5 d_i + \beta_6 e_i + \beta_7 p_i + \beta_8 x_i + \beta_9 c_i + \beta_{10} s_i + \beta_{11} g_i$  
+
+Then, a model with only the two predictors mentioned by the reference paper to be most important (known henceforth as the "reduced model") was created: 
+
+$y_i \sim Bern(\theta_i)$   
+$logit(\theta_i) = \beta_0 + \beta_1 e_i + \beta_2 c_i$ 
+
+An intercept-only model was created for reference: 
+
+$y_i \sim Bern(\theta_i)$   
+$logit(\theta_i) = \beta_0$ 
+
+Last, a model with horseshoe priors was formulated as a method of variable selection: 
+
+$y_i \sim Bern(\theta_i)$   
+$logit(\theta_i) = \beta_0 + \beta_1 a_i + \beta_2 m_i + \beta_3 h_i + \beta_4 k_i + \beta_5 d_i + \beta_6 e_i + \beta_7 p_i + \beta_8 x_i + \beta_9 c_i + \beta_{10} s_i + \beta_{11} g_i$   
+$\beta_0 \sim N(0, 1)$   
+$\beta_j | \lambda_j, \tau \sim N(0, \lambda_j \tau)$   
+$\lambda_j \sim C^+(0, 1)$, $j=1, \cdots, P$   
+$\tau \sim C^+(0, \tau_0)$ where $\tau_0 = \frac{p_0}{P-p_0} \frac{\sigma}{\sqrt{n}}$   
+We approximate $\sigma$ with pseudo variance $\tilde{\sigma}^2=1/\mu(1-\mu)$ for non-gaussian link  
+
+where:
+
+ai refers to patient age in years,
+
+mi refers to the presence of anaemia, 
+
+hi refers to the presence of high blood pressure,
+
+ki refers to blood creatinine phosphokinase level in mcg/L,
+
+di refers to the presence of diabetes,
+
+ei refers to ejection fraction (percentage of blood leaving the heart upon each contraction),
+
+pi refers to blood platelets in kiloplatelets/mL,
+
+xi refers to sex (M/F),
+
+ci refers to serum creatinine in mg/dL,
+
+si refers to serum sodium in mEq/L,
+
+gi refers to whether the patient smokes
+
+# Methods
+
+First, all models were run using samples of the full data set in order to tune the models. Certain aspects needed to be controlled to avoid divergence issues, including having 1,000 iterations in the models and setting the maximum tree depth to 20 (increased from the default value of 10). Then, the models were run on the full data set. 
+
+### Full model
+
+```{r, include = F}
+# Full model
+fullmod <- brm(formula = DEATH_EVENT ~ ., 
+                data = heart,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 2000,
+                warmup = 1000,
+               control = list(max_treedepth = 20),
+                cores = getOption("mc.cores", 12), 
+                file = "output/fullmod4")
+```
+
+```{r, echo = F}
+summary(fullmod)
+```
+
+### Reduced model 
+
+```{r, include = F}
+# Reduced model
+redmod <- brm(formula = DEATH_EVENT ~ ejection_fraction + serum_creatinine, 
+                data = heart,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 2000,
+                warmup = 1000,
+               control = list(max_treedepth = 20),
+                cores = getOption("mc.cores", 12), 
+                file = "output/redmod2")
+```
+
+```{r, echo = F}
+summary(redmod)
+```
+
+### Intercept-only model
+
+```{r, include = F}
+# Intercept-only model
+intmod <- brm(formula = DEATH_EVENT ~ 1, 
+                data = heart,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 2000,
+                warmup = 1000,
+               control = list(max_treedepth = 20),
+                cores = getOption("mc.cores", 12), 
+                file = "output/intmod2")
+```
+
+```{r, echo = F}
+summary(intmod)
+```
+
+### Horseshoe model
+
+```{r, include = F}
+# fit the model
+if(file.exists("output/hs_mod.rds")){
+	hs_mod <- read_rds("output/hs_mod.rds")
+} else {
+	hs_mod <- stan_glm(DEATH_EVENT ~ ., 
+                        data = heart, 
+                        family = binomial(), 
+                        prior = prior_coeff,
+                        chains = 4, 
+                        iter = 2000,
+                        warmup = 1000,
+                        control = list(max_treedepth = 20),
+                        cores = getOption("mc.cores", 6), 
+                        algorithm = "sampling")
+	saveRDS(hs_mod, file = "output/hs_mod.rds")
+}
+```
+
+```{r, echo = F}
+summary(hs_mod)
+```
+
+After the models were tuned and finalized, in-sample checks were completed on them. This included binned residual plots plotted against ejection fraction and serum creatinine (the two variables deemed most important by the reference paper the horseshoe prior model). A log transformation was completed on the serum creatinine variable in these plots for readibility.
+
+```{r, include = F}
+# Posterior prediction for full model, intercept-only model, 
+# and reduced model
+ynewfull <- posterior_predict(fullmod)
+ynewint <- posterior_predict(intmod)
+ynewred <- posterior_predict(redmod)
+```
+
+```{r, include = F}
+# Point estimates for all models
+ytildefull <- apply(ynewfull, 2, mean)
+ytildeint <- apply(ynewint, 2, mean)
+ytildered <- apply(ynewred, 2, mean)
+```
+
+```{r, include = F}
+# Residuals for all models
+resfull <- heart$DEATH_EVENT - ytildefull
+resint <- heart$DEATH_EVENT - ytildeint
+resred <- heart$DEATH_EVENT - ytildered
+```
+
+```{r}
+# Posterior prediction
+ynew_si <- posterior_predict(hs_mod)
+# Point estimates for all models
+ytilde <- apply(ynew_si, 2, mean)
+# Residuals for all models
+res <- heart$DEATH_EVENT - ytilde
+```
+
+### Full model
+
+```{r, echo = F}
+# Full model residuals plotted against ejection fraction, binned
+binnedplot(heart$ejection_fraction, resfull,
+           xlab = "Ejection fraction",
+           main = "Full model residuals plotted against ejection fraction")
+```
+
+```{r, echo = F}
+# Full model residuals plotted against log serum creatinine, binned
+binnedplot(log(heart$serum_creatinine), resfull,
+           xlab = "log(serum creatinine)",
+           main = "Full model residuals plotted against log serum creatinine")
+```
+
+### Intercept-only model
+
+```{r, echo = F}
+# Intercept-only model plotted against ejection fraction
+binnedplot(heart$ejection_fraction, resint,
+           xlab = "Ejection fraction",
+           main = "Intercept-only model residuals plotted against ejection fraction")
+```
+
+```{r, echo = F}
+# Intercept-only model plotted against log serum creatinine
+binnedplot(log(heart$serum_creatinine), resint,
+           xlab = "log(serum creatinine)",
+           main = "Intercept-only model residuals plotted against log serum creatinine")
+```
+
+### Reduced model
+
+```{r, echo = F}
+# Reduced model plotted against ejection fraction
+binnedplot(heart$ejection_fraction, resred,
+           xlab = "Ejection fraction",
+           main = "Reduced model residuals plotted against ejection fraction")
+```
+
+```{r, echo = F}
+# Reduced model plotted against log serum creatinine
+binnedplot(log(heart$serum_creatinine), resred,
+           xlab = "log(serum creatinine)",
+           main = "Reduced model residuals plotted against log serum creatinine")
+```
+
+### Horseshoe model 
+
+```{r, echo = F}
+binnedplot(heart$ejection_fraction, res,
+           xlab = "Ejection fraction",
+           main = "Horseshoe model residuals plotted against ejection fraction")
+# Model residuals plotted against log serum creatinine, binned
+binnedplot(log(heart$serum_creatinine), res,
+           xlab = "Serum creatinine",
+           main = "Horseshoe model residuals plotted against log serum creatinine")
+```
+
+Then, test statistics were created and assessed for all of the models. These statistics included: 
+
+- T1: Proportion of survival
+
+- T2: Proportion of survival among patients with an ejection fraction $> 40\%$ (based on a healthy range discussed in Chicco & Jurman)
+
+- T3: Proportion of survival among patients with serum creatinine < 1.2 mg/dL
+
+Shown here is T2 for all of the models. For that test statistic, the full model has a predictive p-value of 0.836, the reduced model 0.940, the intercept-only model 0.094, and the horseshoe model 0.766. The horseshoe model performed the best in the case of patients with ejection fraction $> 40\%$.
+
+### Full model 
+
+```{r, echo = F}
+# Full model
+ynew_ejecfull <- t(ynewfull) %>% 
+  as_tibble() %>% 
+  cbind(heart$ejection_fraction) %>% 
+  filter(`heart$ejection_fraction` > 40)
+
+true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+hs_t2full <- sapply(1:(ncol(ynew_ejecfull) - 1), FUN = function(x) mean(ynew_ejecfull[, x] == 0))
+
+t2_plotfull <- ggplot(data = as_tibble(hs_t2full), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients w/ ejection fraction >40%, full model") + 
+  theme_bw(base_size = 12) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t2_plotfull
+```
+
+### Reduced model
+
+```{r, echo = F}
+# Reduced model
+ynew_ejecred <- t(ynewred) %>% 
+  as_tibble() %>% 
+  cbind(heart$ejection_fraction) %>% 
+  filter(`heart$ejection_fraction` > 40)
+
+true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+hs_t2red <- sapply(1:(ncol(ynew_ejecred) - 1), FUN = function(x) mean(ynew_ejecred[, x] == 0))
+
+t2_plotred <- ggplot(data = as_tibble(hs_t2red), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients w/ ejection fraction >40%, reduced model") + 
+  theme_bw(base_size = 11) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t2_plotred
+```
+
+### Intercept-only model
+
+```{r, echo = F}
+# Intercept-only model
+ynew_ejecint <- t(ynewint) %>% 
+  as_tibble() %>% 
+  cbind(heart$ejection_fraction) %>% 
+  filter(`heart$ejection_fraction` > 40)
+
+true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+hs_t2int <- sapply(1:(ncol(ynew_ejecint) - 1), FUN = function(x) mean(ynew_ejecint[, x] == 0))
+
+t2_plotint <- ggplot(data = as_tibble(hs_t2int), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients w/ ejection fraction >40%, intercept-only model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t2_plotint
+```
+
+### Horseshoe model
+
+```{r, echo = F}
+# T_2: prop(DEATH_EVENT == 0 | ejection_fraction > 40)
+ynew_ejection <- t(ynew_si) %>%
+	as_tibble() %>%
+	cbind(heart$ejection_fraction) %>%
+	filter(`heart$ejection_fraction` > 40)
+hs_t2 <- sapply(1:(ncol(ynew_ejection)-1), FUN = function(x) mean(ynew_ejection[,x] == 0))
+true_t2 <- nrow(filter(heart, DEATH_EVENT==0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+ 
+(t2_plot <- ggplot(data = as_tibble(hs_t2), aes(value)) + 
+    geom_histogram(aes(fill = "replicated")) + 
+    geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue"))+
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")))
+```
+
+Afterward, out-of-sample model checks were performed. Leave-One-Out (LOO) cross-validation was performed on all of the models. Aside from 3 out of the 299 examples in the full model and 1 example in the horseshoe model which were defined as "okay" (< 0.7), all of the validations ended up with every value being "good" (< 0.5). 
+
+### Full model
+
+```{r, include = F}
+# Pareto k estimates, full model
+loo_full <- loo(fullmod, save_psis = TRUE)
+loo_full
+```
+
+```{r, echo = F}
+# PSIS plot, full model
+plot(loo_full,
+     diagnostic = c("k"),
+     label_points = TRUE, 
+     main = "PSIS diagnositc plot - full model")
+```
+
+### Reduced model
+
+```{r, include = F}
+# Pareto k estimates, reduced model
+loo_red <- loo(redmod, save_psis = TRUE)
+loo_red
+```
+
+```{r, echo = F}
+# PSIS plot, reduced model
+plot(loo_red,
+     diagnostic = c("k"),
+     label_points = TRUE, 
+     main = "PSIS diagnostic plot, reduced model")
+```
+
+### Intercept-only model
+
+```{r, include = F}
+# Pareto k estimates, intercept-only model
+loo_int <- loo(intmod, save_psis = TRUE)
+loo_int
+```
+
+```{r, echo = F}
+# PSIS plot, intercept-only model
+plot(loo_int,
+     diagnostic = c("k"),
+     label_points = TRUE, 
+     main = "PSIS diagnostic plot, intercept-only model")
+```
+
+### Horseshoe model 
+
+```{r, include = F}
+(loo_res <- loo(hs_mod, save_psis = TRUE))
+```
+
+```{r, echo = F}
+plot(loo_res,
+  diagnostic = c("k"),
+  label_points = TRUE,
+  main = "PSIS diagnostic plot, horseshoe prior model"
+)
+```
+
