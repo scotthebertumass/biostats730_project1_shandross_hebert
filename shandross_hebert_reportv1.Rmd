@@ -39,12 +39,14 @@ head(heartt)
 
 # Introduction
 
-Cardiovascular disease (CVD) accounts for roughly 17,000,000 millions deaths worldwide annually. Current evaluation of the disease progression in various CVDs currently is lacking. Specifically, one example is heart failure -- heart failure outcome prediction is of vital importance in clinical practice throughout the world, yet such prediction has not yet yielded promising results. A study by Chicco & Jurman highlighted the potential of machine learning methods to provide physicians with better tools to predict heart failure patient outcomes. The study used data of 299 patients with heart failure. The study included 10 machine learning methods, of which Random Forests performed the best. Afterward, the study authors performed feature selection, which found that serum creatinine and ejection fraction were the best predictors, and a Random Forests model (and one other machine learning model) using only those two predictors outperformed models with all available predictors, which also included age, anaemia, high blood pressure, blood creatinine phosphokinase, diabetes, blood platelets, sex, serum sodium, and smoking status. 
+Cardiovascular diseases (CVDs) are a group of disorders of the heart and blood vessels which account for roughly 17 million deaths worldwide annually. CVDs are especially prevalent in industrialized countries, yet current evaluation of the disease progression in various CVDs, especially heart failure, remains lacking. Heart failure is one type of CVD that occurs when the heart fails to pump sufficient blood to the rest of the body. Prediction of heart failure outcome is of vital importance in clinical practice throughout the world but has not yielded promising results.  
+A study by Chicco & Jurman highlighted the potential of machine learning methods to provide physicians with better tools to predict heart failure patient outcomes. The authors analyzed a data set of 299 heart failure patient medical records originally released by Ahmad and colleagues. Chicco & Jurman investigated ten types of machine learning methods using all predictors in the dataset and performed feature selection to determine the most important predictors. Random forests yielded the best results of the ten techniques while feature selection showed serenade creatinine and ejection fraction to be the best predictors. A random forests model using only these top two predictors outperformed models with all available predictors, which also included age, anaemia, high blood pressure, blood creatinine phosphokinase, diabetes, blood platelets, sex, serum sodium, and smoking status.  
+This project utilizes the same dataset as Chicco & Jurman, but it utilizes a Bayesian logistic regression model in order to compare Bayesian methods to the machine learning methods of the reference paper.  
 
-This project utilizes the same dataset as Chicco & Jurman, but it utilizes Bayesian logistic regression methods in order to compare those Bayesian methods to the machine learning methods from the reference paper. 
 
-# Models 
-
+# Methods 
+We chose to compare four total models to better examine which aspects of the Bayesian models contribute to model accuracy. 
+  
 First, a Bayesian logistic regression model with all predictors was formulated: 
 
 $y_i \sim Bern(\theta_i)$   
@@ -422,11 +424,11 @@ plot(loo_int,
 ### Horseshoe model 
 
 ```{r, include = F}
-(loo_res <- loo(hs_mod, save_psis = TRUE))
+(loo_hs <- loo(hs_mod, save_psis = TRUE))
 ```
 
 ```{r, echo = F}
-plot(loo_res,
+plot(loo_hs,
   diagnostic = c("k"),
   label_points = TRUE,
   main = "PSIS diagnostic plot, horseshoe prior model"
