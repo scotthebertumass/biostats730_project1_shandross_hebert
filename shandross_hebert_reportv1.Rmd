@@ -41,7 +41,9 @@ head(heartt)
 # Introduction
 
 Cardiovascular diseases (CVDs) are a group of disorders of the heart and blood vessels which account for roughly 17 million deaths worldwide annually. CVDs are especially prevalent in industrialized countries, yet current evaluation of the disease progression in various CVDs, especially heart failure, remains lacking. Heart failure is one type of CVD that occurs when the heart fails to pump sufficient blood to the rest of the body. Prediction of heart failure outcome is of vital importance in clinical practice throughout the world but has not yielded promising results.  
+
 A study by Chicco & Jurman highlighted the potential of machine learning methods to provide physicians with better tools to predict heart failure patient outcomes. The authors analyzed a data set of 299 heart failure patient medical records originally released by Ahmad and colleagues. Chicco & Jurman investigated ten types of machine learning methods using all predictors in the dataset and performed feature selection to determine the most important predictors. Random forests yielded the best results of the ten techniques while feature selection showed serenade creatinine and ejection fraction to be the best predictors. A random forests model using only these top two predictors outperformed models with all available predictors, which also included age, anaemia, high blood pressure, blood creatinine phosphokinase, diabetes, blood platelets, sex, serum sodium, and smoking status.  
+
 This project utilizes the same dataset as Chicco & Jurman, but it utilizes a Bayesian logistic regression model in order to compare Bayesian methods to the machine learning methods of the reference paper.  
 
 
@@ -100,14 +102,17 @@ si refers to serum sodium in mEq/L,
 
 gi refers to whether the patient smokes
 
-
-# Methods
+## Model implementation
+Models are implemented using the packages `brms` and `rstanarm` with additional model checks performed using `arm`, `tidybayes`, and `bayesplot`. The horseshoe prior model is fit and checked using functions from `rstanarm` (unlike the other three models) because `brms` only supports the use of horseshoe priors for linear regression, not logistic regression.   
+   
 ## Horseshoe priors
-The horseshoe is a type of Bayesian prior (developed by ...) that serves as a shrinkage method to improve model fit. This prior is named for its U-shape that resembles a horseshoe and determines the constraints on coefficient estimates. Coefficients associated with predictors weakly supported by the data are shrunk very close to zero while coefficients more strongly supported by the data experience minimal shrinkage.  
+The horseshoe is a type of Bayesian prior (developed by Piironen and Vehtari) that serves as a shrinkage method to improve model fit. This prior is named for its U-shape that resembles a horseshoe and determines the constraints on coefficient estimates. Coefficients associated with predictors weakly supported by the data are shrunk very close to zero while coefficients more strongly supported by the data experience minimal shrinkage.  
+
 We chose to explore usage of the horseshoe prior for several reasons. First, results from the reference paper showed that the models with ejection fraction and serum creatinine as the only predictors outperformed models using all predictors. This suggests that constraining coefficient estimates of unimportant predictors may yield better prediction accuracy. Second, as the horseshoe prior only shrinks coefficients of unsupported variables towards zero, it provides an interesting compromise between the reduced model and the full model described above. Third, the horseshoe prior was out of the scope of the Applied Bayesian Modeling class, and this project serves as an opportunity to learn how to apply a new type of prior.  
 
-## Validation, sensitively analysis, and model comparison
+## Initial checks and validation
 Before running the models on the full dataset, we first performed an initial test of each model on a smaller sample of the data with few iterations for some preliminary validation. The models passed these initial checks, allowing us to proceed with the chosen four models.   
+
 We began fitting the models using 1000 iterations with 500 as warm up, spread across four chains. However, this created warnings of divergence and low bulk ESS for the horseshoe prior model, though other MCMC diagnostics like Rhat values of 1.0 and n_eff values greater than 225 indicated increasing warm-up and the number of iterations would be sufficient to fix the problem. We chose to manually increase certain defaults for all of the models for consistency; for example, we used 1,000 warmup iterations and set maximum tree depth to 20 (increased from the default value of 10).  
 
 ```{r, include = F}
@@ -151,6 +156,13 @@ intmod <- brm(formula = DEATH_EVENT ~ 1,
 if(file.exists("output/hs_mod.rds")){
 	hs_mod <- read_rds("output/hs_mod.rds")
 } else {
+	D <- ncol(heart) - 1
+	n <- nrow(heart)
+	p0 <- 2 # prior guess for the number of relevant variables
+	sigma <- 1 / sqrt(mean(heart$DEATH_EVENT) * (1-mean(heart$DEATH_EVENT))) # pseudo sigma
+	tau0 <- p0/(D-p0) * sigma/sqrt(n)
+	prior_coeff <- hs(df=1, global_df=1, global_scale = tau0) # tau ∼ half-Cauchy(0, tau0^2)
+
 	hs_mod <- stan_glm(DEATH_EVENT ~ ., 
                         data = heart, 
                         family = binomial(), 
@@ -159,13 +171,14 @@ if(file.exists("output/hs_mod.rds")){
                         iter = 2000,
                         warmup = 1000,
                         control = list(max_treedepth = 20),
-                        cores = getOption("mc.cores", 6), 
+                        cores = getOption("mc.cores", 8), 
                         algorithm = "sampling")
 	saveRDS(hs_mod, file = "output/hs_mod.rds")
 }
 # summary(hs_mod)
 ```
 
+## In-sample checks
 After the models were tuned and finalized, we performed in-sample checks. This included binned residual plots plotted against ejection fraction and serum creatinine (the two variables deemed most important by the reference paper the horseshoe prior model). A log transformation was completed on the serum creatinine variable in these plots for readibility. These binned residuals generally looked okay, though the no predictor model may have an issue of over predicting survival at low ejection fraction levels (see Appendix).  
 
 Following our assessment of residuals, we performed posterior predictive checks using three summary statistics. These test quantities were created to evaluate any discrepancies between the model simulations and the true data in terms of predicted survival proportions under three scenarios: overall, among patients with a normal ejection fraction, and among patients with normal serum creatinine levels. A healthy range for ejection fraction is defined as greater than 40% in the paper by Chicco & Jurman while a healthy serum creatinine level is less than 1.2 mg/dL (Mayo Clinic). The test statistics are labeled as follows:  
@@ -176,7 +189,8 @@ Following our assessment of residuals, we performed posterior predictive checks 
 
 - T3: Proportion of survival among patients with serum creatinine < 1.2 mg/dL
 
-We then perform leave one out (LOO) cross-validation on the four models and use the resulting ELPD values, along with evaluation metrics like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models.  
+## Out-of-sample checks
+We then perform leave-one-out (LOO) cross-validation on the four models and use the resulting ELPD values, along with evaluation metrics like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models.  
 
 
 # Results
@@ -214,29 +228,25 @@ reshs <- heart$DEATH_EVENT - ytildehs
 
 
 ```{r, echo = F}
-# Full model residuals plotted against ejection fraction, binned
+par(mfrow = c(2, 2))
 full_res_ejection <- binnedplot(heart$ejection_fraction, resfull, xlab = "Ejection fraction", main = "Full model")
 int_res_ejection <- binnedplot(heart$ejection_fraction, resint, xlab = "Ejection fraction", main = "Intercept-only model")
 red_res_ejection <- binnedplot(heart$ejection_fraction, resred, xlab = "Ejection fraction", main = "Reduced model")
 hs_res_ejection <- binnedplot(heart$ejection_fraction, reshs, xlab = "Ejection fraction", main = "Horseshoe prior model")
+mtext(text = 'Model residuals plotted against ejection fraction', side = 3, line = 0, outer = TRUE)
+```
 
+```{r, echo = F}
+par(mfrow = c(2, 2))
 full_res_creatinine <- binnedplot(log(heart$serum_creatinine), resfull, xlab = "log(serum creatinine)", main = "Full model")
 int_res_creatinine <- binnedplot(log(heart$serum_creatinine), resint, xlab = "log(serum creatinine)", main = "Intercept-only model")
 red_res_creatinine <- binnedplot(log(heart$serum_creatinine), resred, xlab = "log(serum creatinine)", main = "Reduced model")
 hs_res_creatinine <- binnedplot(log(heart$serum_creatinine), reshs, xlab = "log(serum creatinine)", main = "Horseshoe prior model")
-
-full_res_ejection + int_res_ejection + red_res_ejection + hs_res_ejection +
-  plot_annotation(title = 'Model residuals plotted against ejection fraction') +
-  plot_layout(ncol = 2, guides='collect') &
-  theme(legend.position='bottom')
-
-full_res_creatinine + int_res_creatinine + red_res_creatinine + hs_res_creatinine +
-  plot_annotation(title = 'Model residuals plotted against serum creatinine') +
-  plot_layout(ncol = 2, guides='collect') &
-  theme(legend.position='bottom')
+mtext(text = 'Model residuals plotted against log serum creatinine', side = 3, line = 0, outer = TRUE)
 ```
 
 All four models showed very accurate predictions for survival proportion without restriction on type of patient (T1). However, predictions for survival among patients with a normal ejection fraction (T2) was overestimated by every model except for the intercept-only model, which under predicted survival for this group. However, the horseshoe prior model had the best posterior predictive p-value of 0.766 by about 0.07. For T3, the proportion of survival for patients with normal serum creatinine levels, all models performed more similarly by underestimating survival proportion with all predictive p-values less than 0.25.  
+
 Shown here is T2 for all of the models. For that test statistic, the full model has a predictive p-value of 0.836, the reduced model 0.940, the intercept-only model 0.094, and the horseshoe model 0.766. The horseshoe model performed the best in the case of patients with ejection fraction $> 40\%$.
 
 ### Full model 
@@ -305,7 +315,7 @@ t2_ploths <- ggplot(data = as_tibble(hs_t2), aes(value)) +
     geom_histogram(aes(fill = "replicated")) + 
     geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
   ggtitle("Horseshoe prior model") + 
-  theme_bw(base_size = 16) + 
+  theme_bw(base_size = 10) + 
   scale_color_manual(name = "", values = c("observed" = "darkblue"))+
   scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
   
@@ -319,25 +329,19 @@ Afterward, out-of-sample model checks were performed. Leave-One-Out (LOO) cross-
 
 
 ```{r, include = F}
-# Pareto k estimates, full model
 loo_full <- loo(fullmod, save_psis = TRUE)
-psis_full <- plot(loo_full, diagnostic = c("k"), label_points = TRUE, main = "Full model")
-
-# Reduced model
 loo_red <- loo(redmod, save_psis = TRUE)
-psis_red <- plot(loo_red, diagnostic = c("k"), label_points = TRUE, main = "Reduced model")
-
-# Intercept-only model
 loo_int <- loo(intmod, save_psis = TRUE)
-psis_int <- plot(loo_int, diagnostic = c("k"), label_points = TRUE, main = "Intercept-only model")
-
-# Horseshoe model 
 loo_hs <- loo(hs_mod, save_psis = TRUE)
-psis_hs <- plot(loo_hs, diagnostic = c("k"), label_points = TRUE, main = "Horseshoe prior model")
-							  
-psis_full + psis_red + psis_int + psis_hs +	  
-  plot_annotation(title = 'PSIS diagnostic plot') +
-  plot_layout(ncol = 2, guides='collect') &
-  theme(legend.position='bottom')
+```
+
+```{r, echo = F}
+par(mfrow=c(2, 2))
+plot(loo_full, diagnostic = c("k"), label_points = TRUE, main = "Full model")
+plot(loo_red, diagnostic = c("k"), label_points = TRUE, main = "Reduced model")
+plot(loo_int, diagnostic = c("k"), label_points = TRUE, main = "Intercept-only model")
+plot(loo_hs, diagnostic = c("k"), label_points = TRUE, main = "Horseshoe prior model")
+
+mtext(text = 'PSIS diagnostic plot', side = 3, line = 0, outer = TRUE)
 ```
 
