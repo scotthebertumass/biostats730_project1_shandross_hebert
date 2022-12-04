@@ -230,18 +230,17 @@ $logit(\theta_i) = 3.94 + 0.03 a_i - 0.00 m_i - 0.00 h_i + 0.00 k_i + 0.00 d_i -
 ## Horseshoe prior-induced shrinkage
 As shown above by the fitted model, the horseshoe prior successfully shrunk most variables' coefficients to zero, except for the most relevant ones supported by the data. These important predictors included serum creatinine, ejection fraction, and age. While we provided the initial guess of two relevant predictors, the addition of age remains consistent with the reference paper results, which showed age as a potential third most important predictor. The shrinkage described is shown in the figure below, with the intercept term separate from the predictors given a difference in scale.  
 
-```{r, echo=F}
+```{r, echo=F, cache=T, fig.cap='Posterior versus prior comparison for horseshoe prior model that shows parameter shrinkage.'}
 comp_plot_alpha <- posterior_vs_prior(hs_mod, color_by="none", pars="alpha")
 comp_plot_beta <- posterior_vs_prior(hs_mod, color_by="parameter", pars="beta")
 
 comp_plot_alpha + comp_plot_beta +
-  plot_annotation(title = 'Horseshoe Prior Posterior Comparison') +
   plot_layout(ncol = 2, widths = c(1, 3), guides='collect') &
   theme(legend.position='bottom')
 ```
 
 ## In-sample checks
-The binned residuals plots generally looked okay, suggesting the current models were sufficient to proceed with, though the no predictor model may have an issue of over predicting survival at low ejection fraction levels (see Appendix).  
+The binned residuals plots generally looked okay, suggesting the current models were sufficient to proceed with, though the no predictor model may have an issue of over predicting survival at low ejection fraction levels (see Table 3 in the Appendix).  
 
 All four models showed very accurate predictions for survival proportion without restriction on type of patient (T1). However, predictions for survival among patients with a normal ejection fraction (T2) was overestimated by every model except for the intercept-only model, which under predicted survival for this group. However, the horseshoe prior model had the best posterior predictive p-value of 0.766 by about 0.07. For T3, the proportion of survival for patients with normal serum creatinine levels, all models performed more similarly by underestimating survival proportion with all predictive p-values less than 0.25.  
 
@@ -251,7 +250,7 @@ Leave-One-Out (LOO) cross-validation was performed on all of the models with the
 ## Model comparison
 Unlike with most of our previous in-sample and out-of-sample checks, the full model performs slightly better than the horseshoe prior model in terms of the prediction accuracy metrics shown in the table below. This is a little surprising, especially since it inconsistent with the findings from Chicco & Jurman. However, this may simply be a quirk of essentially only evaluating "training" set results, with test set results being consistent with the reference paper. Alternatively, Bayesian modeling may simply perform better with more predictors on this dataset compared to machine learning.  
 
-Comparisons against the top machine learning model's prediction accuracy show that both the horseshoe prior and full models perform competitively against this random forests model, beating it for all metrics shown except for true negative rate (and ELPD which are not given). As seen in the table, the gains in more often correctly identifying true positives seem to be the source of higher accuracy, AUC, and MCC values. Once again, though, our models' metric values are essentially training set results, which may be higher than those of test set results like that of the random forests model.  
+Comparisons against the top machine learning model's prediction accuracy show that both the horseshoe prior and full models perform competitively against this random forests model, beating it for all metrics shown except for true negative rate (and ELPD which are not given). As seen in Table 1 (and Table 2 in the Appendix), the gains in more often correctly identifying true positives seem to be the source of higher accuracy, AUC, and MCC values. Once again, though, our models' metric values are essentially training set results, which may be higher than those of test set results like that of the machine learning models.  
 
 ```{r, include = F}
 # Posterior prediction for all models
@@ -268,7 +267,7 @@ loo_int <- loo(intmod, save_psis = TRUE)
 loo_hs <- loo(hs_mod, save_psis = TRUE)
 ```
 
-```{r, include=F}
+```{r, include=F, cache=T}
 # Full
 predfull <- prediction(fitted(fullmod)[, 1], heart$DEATH_EVENT)
 perffull <- performance(predfull, "tpr", "fpr")
@@ -291,7 +290,7 @@ full_metrics <- full_confusion_matrix %>%
 	mutate(elpd = loo_full$estimates[1, 1], auc = performance(predfull,"auc")@y.values[[1]])
 ```
 
-```{r, include=F}
+```{r, include=F, cache=T}
 # Reduced
 predred <- prediction(fitted(redmod)[,1], heart$DEATH_EVENT)
 perfred <- performance(predred, "tpr", "fpr")
@@ -314,7 +313,7 @@ red_metrics <- red_confusion_matrix %>%
 	mutate(elpd = loo_red$estimates[1, 1], auc = performance(predred,"auc")@y.values[[1]])
 ```
 
-```{r, include=F}
+```{r, include=F, cache=T}
 # Intercept only
 predint <- prediction(fitted(intmod)[,1], heart$DEATH_EVENT)
 perfint <- performance(predint, "tpr", "fpr")
@@ -337,7 +336,7 @@ int_metrics <- int_confusion_matrix %>%
 	mutate(elpd = loo_int$estimates[1, 1], auc = performance(predint,"auc")@y.values[[1]])
 ```
 	
-```{r, include=F}
+```{r, include=F, cache=T}
 # Horseshoe
 predhs <- prediction(fitted(hs_mod), heart$DEATH_EVENT)
 perfhs <- performance(predhs, "tpr", "fpr")
@@ -366,7 +365,7 @@ all_metrics <- rbind(full_metrics, red_metrics, int_metrics, hs_metrics) %>%
 	dplyr::select(model, elpd, mean_mcc, mean_tpr, mean_tnr, mean_accuracy, auc) %>%
 	arrange(desc(elpd)) %>%
   mutate(across(where(is.numeric), round, digits=3), elpd=round(elpd, 1)) 
-knitr::kable(all_metrics)
+knitr::kable(all_metrics, caption = "Survival prediction results of all models - mean of 4000 posterior samples")
 ```
 
 
@@ -378,8 +377,6 @@ knitr::kable(all_metrics)
 
 ## Supplemental figures
 
-### Binned residual plots
-
 ```{r, include = F}
 # Point estimates for all models
 ytildefull <- apply(ynewfull, 2, mean)
@@ -388,37 +385,79 @@ ytildered <- apply(ynewred, 2, mean)
 ytildehs <- apply(ynewhs, 2, mean)
 ```
 
-```{r, include = F}
+```{r, echo = F, fig.cap = 'Binned model residuals plotted against ejection fraction'}
 # Residuals for all models
 resfull <- heart$DEATH_EVENT - ytildefull
 resint <- heart$DEATH_EVENT - ytildeint
 resred <- heart$DEATH_EVENT - ytildered
 reshs <- heart$DEATH_EVENT - ytildehs
-```
 
-```{r, echo = F}
+# Ejection fraction binned plots
 par(mfrow = c(2, 2))
-full_res_ejection <- binnedplot(heart$ejection_fraction, resfull, xlab = "Ejection fraction", main = "Full model")
-int_res_ejection <- binnedplot(heart$ejection_fraction, resint, xlab = "Ejection fraction", main = "Intercept-only model")
-red_res_ejection <- binnedplot(heart$ejection_fraction, resred, xlab = "Ejection fraction", main = "Reduced model")
-hs_res_ejection <- binnedplot(heart$ejection_fraction, reshs, xlab = "Ejection fraction", main = "Horseshoe prior model")
-mtext(text = 'Model residuals plotted against ejection fraction', side = 3, line = 0, outer = TRUE)
+binnedplot(heart$ejection_fraction, resfull, xlab = "Ejection fraction", main = "Full model")
+binnedplot(heart$ejection_fraction, resint, xlab = "Ejection fraction", main = "Intercept-only model")
+binnedplot(heart$ejection_fraction, resred, xlab = "Ejection fraction", main = "Reduced model")
+binnedplot(heart$ejection_fraction, reshs, xlab = "Ejection fraction", main = "Horseshoe prior model")
 ```
 
-```{r, echo = F}
+```{r, echo = F, fig.cap = 'Binned model residuals plotted against log serum creatinine'}
 par(mfrow = c(2, 2))
 full_res_creatinine <- binnedplot(log(heart$serum_creatinine), resfull, xlab = "log(serum creatinine)", main = "Full model")
 int_res_creatinine <- binnedplot(log(heart$serum_creatinine), resint, xlab = "log(serum creatinine)", main = "Intercept-only model")
 red_res_creatinine <- binnedplot(log(heart$serum_creatinine), resred, xlab = "log(serum creatinine)", main = "Reduced model")
 hs_res_creatinine <- binnedplot(log(heart$serum_creatinine), reshs, xlab = "log(serum creatinine)", main = "Horseshoe prior model")
-mtext(text = 'Model residuals plotted against log serum creatinine', side = 3, line = 0, outer = TRUE)
 ```
 
-### Test statistic plots
 
-Shown here is T2 for all of the models. For that test statistic, the full model has a predictive p-value of 0.836, the reduced model 0.940, the intercept-only model 0.094, and the horseshoe model 0.766. The horseshoe model performed the best in the case of patients with ejection fraction $> 40\%$.
+```{r, echo = F, fig.cap = 'Survival proportion of all patience'}
+true_t1 <- mean(heart$DEATH_EVENT == 0)
 
-```{r, echo = F}
+# Full model
+full_t1 <- sapply(1:nrow(ynewfull), function(x) mean(ynewfull[x,] == 0))
+t1_plotfull <- ggplot(data = as_tibble(full_t1), aes(value)) + 
+    geom_histogram(aes(fill = "replicated")) + 
+    geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Full model") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue"))+
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+
+# Reduced model
+red_t1 <- sapply(1:nrow(ynewred), function(x) mean(ynewred[x,] == 0))
+t1_plotred <- ggplot(data = as_tibble(red_t1), aes(value)) + 
+    geom_histogram(aes(fill = "replicated")) + 
+    geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Red model") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue"))+
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+
+# Intercept only model
+int_t1 <- sapply(1:nrow(ynewint), function(x) mean(ynewint[x,] == 0))
+t1_plotint <- ggplot(data = as_tibble(int_t1), aes(value)) + 
+    geom_histogram(aes(fill = "replicated")) + 
+    geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Int model") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue"))+
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+  
+# Horseshoe model 
+hs_t1 <- sapply(1:nrow(ynewhs), function(x) mean(ynewhs[x,] == 0))
+t1_ploths <- ggplot(data = as_tibble(hs_t1), aes(value)) + 
+    geom_histogram(aes(fill = "replicated")) + 
+    geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Horseshoe prior model") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue"))+
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+  
+t1_plotfull + t1_plotred + t1_plotint + t1_ploths +
+  plot_layout(ncol = 2, guides='collect') &
+  theme(legend.position='bottom')
+```
+
+```{r, echo = F, fig.cap = 'Survival proportion of patients with normal ejection fraction (over 40%)'}
 true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
 
 # Full model
@@ -427,9 +466,9 @@ ynew_ejecfull <- t(ynewfull) %>%
   cbind(heart$ejection_fraction) %>% 
   filter(`heart$ejection_fraction` > 40)
 
-hs_t2full <- sapply(1:(ncol(ynew_ejecfull) - 1), FUN = function(x) mean(ynew_ejecfull[, x] == 0))
+full_t2 <- sapply(1:(ncol(ynew_ejecfull) - 1), FUN = function(x) mean(ynew_ejecfull[, x] == 0))
 
-t2_plotfull <- ggplot(data = as_tibble(hs_t2full), aes(value)) + 
+t2_plotfull <- ggplot(data = as_tibble(full_t2), aes(value)) + 
   geom_histogram(aes(fill = "replicated")) + 
   geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
   ggtitle("Full model") + 
@@ -443,9 +482,9 @@ ynew_ejecred <- t(ynewred) %>%
   cbind(heart$ejection_fraction) %>% 
   filter(`heart$ejection_fraction` > 40)
 
-hs_t2red <- sapply(1:(ncol(ynew_ejecred) - 1), FUN = function(x) mean(ynew_ejecred[, x] == 0))
+red_t2 <- sapply(1:(ncol(ynew_ejecred) - 1), FUN = function(x) mean(ynew_ejecred[, x] == 0))
 
-t2_plotred <- ggplot(data = as_tibble(hs_t2red), aes(value)) + 
+t2_plotred <- ggplot(data = as_tibble(red_t2), aes(value)) + 
   geom_histogram(aes(fill = "replicated")) + 
   geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
   ggtitle("Reduced model") + 
@@ -460,9 +499,9 @@ ynew_ejecint <- t(ynewint) %>%
   cbind(heart$ejection_fraction) %>% 
   filter(`heart$ejection_fraction` > 40)
 
-hs_t2int <- sapply(1:(ncol(ynew_ejecint) - 1), FUN = function(x) mean(ynew_ejecint[, x] == 0))
+int_t2 <- sapply(1:(ncol(ynew_ejecint) - 1), FUN = function(x) mean(ynew_ejecint[, x] == 0))
 
-t2_plotint <- ggplot(data = as_tibble(hs_t2int), aes(value)) + 
+t2_plotint <- ggplot(data = as_tibble(int_t2), aes(value)) + 
   geom_histogram(aes(fill = "replicated")) + 
   geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
   ggtitle("Intercept-only model") + 
@@ -470,13 +509,12 @@ t2_plotint <- ggplot(data = as_tibble(hs_t2int), aes(value)) +
   scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
   scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
 
-# T_2: prop(DEATH_EVENT == 0 | ejection_fraction > 40)
-ynew_ejection <- t(ynewhs) %>%
+# Horseshoe model
+ynew_ejechs <- t(ynewhs) %>%
 	as_tibble() %>%
 	cbind(heart$ejection_fraction) %>%
 	filter(`heart$ejection_fraction` > 40)
-hs_t2 <- sapply(1:(ncol(ynew_ejection)-1), FUN = function(x) mean(ynew_ejection[,x] == 0))
-true_t2 <- nrow(filter(heart, DEATH_EVENT==0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+hs_t2 <- sapply(1:(ncol(ynew_ejechs)-1), FUN = function(x) mean(ynew_ejechs[,x] == 0))
  
 t2_ploths <- ggplot(data = as_tibble(hs_t2), aes(value)) + 
     geom_histogram(aes(fill = "replicated")) + 
@@ -487,27 +525,104 @@ t2_ploths <- ggplot(data = as_tibble(hs_t2), aes(value)) +
   scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
   
 t2_plotfull + t2_plotred + t2_plotint + t2_ploths +
-  plot_annotation(title = 'Survival proportion for normal ejection fraction (> 40%)') +
   plot_layout(ncol = 2, guides='collect') &
   theme(legend.position='bottom')
 ```
 
-### PSIS plots
-```{r, echo = F}
+```{r, echo = F, fig.cap = 'Survival proportion of patients with normal serum creatinine levels (under 1.2 mg/dL)'}
+true_t3 <- nrow(filter(heart, DEATH_EVENT==0, serum_creatinine < 1.2)) / nrow(filter(heart, serum_creatinine < 1.2))
+
+# Full model
+ynew_creafull <- t(ynewfull) %>% 
+  as_tibble() %>% 
+  cbind(heart$serum_creatinine) %>% 
+  filter(`heart$serum_creatinine` < 1.2)
+
+full_t3 <- sapply(1:(ncol(ynew_creafull) - 1), FUN = function(x) mean(ynew_creafull[, x] == 0))
+
+t3_plotfull <- ggplot(data = as_tibble(full_t3), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Full model") + 
+  theme_bw(base_size = 12) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+  
+# Reduced model
+ynew_creared <- t(ynewred) %>% 
+  as_tibble() %>% 
+  cbind(heart$serum_creatinine) %>% 
+  filter(`heart$serum_creatinine` < 1.2)
+
+red_t3 <- sapply(1:(ncol(ynew_creared) - 1), FUN = function(x) mean(ynew_creared[, x] == 0))
+
+t3_plotred <- ggplot(data = as_tibble(red_t3), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Reduced model") + 
+  theme_bw(base_size = 11) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+
+# Intercept-only model
+ynew_creaint <- t(ynewint) %>% 
+  as_tibble() %>% 
+  cbind(heart$serum_creatinine) %>% 
+  filter(`heart$serum_creatinine` < 1.2)
+
+int_t3 <- sapply(1:(ncol(ynew_creaint) - 1), FUN = function(x) mean(ynew_creaint[, x] == 0))
+
+t3_plotint <- ggplot(data = as_tibble(int_t3), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Intercept-only model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+
+# Horseshoe model
+ynew_creahs <- t(ynewhs) %>%
+	as_tibble() %>%
+	cbind(heart$serum_creatinine) %>%
+	filter(`heart$serum_creatinine` < 1.2)
+hs_t3 <- sapply(1:(ncol(ynew_creahs)-1), FUN = function(x) mean(ynew_creahs[,x] == 0))
+ 
+t3_ploths <- ggplot(data = as_tibble(hs_t3), aes(value)) + 
+    geom_histogram(aes(fill = "replicated")) + 
+    geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Horseshoe prior model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue"))+
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+  
+t3_plotfull + t3_plotred + t3_plotint + t3_ploths +
+  plot_layout(ncol = 2, guides='collect') &
+  theme(legend.position='bottom')
+```
+
+```{r, echo = F, fig.cap = 'PSIS diagnostic plots for all models'}
 par(mfrow=c(2, 2))
 plot(loo_full, diagnostic = c("k"), label_points = TRUE, main = "Full model")
 plot(loo_red, diagnostic = c("k"), label_points = TRUE, main = "Reduced model")
 plot(loo_int, diagnostic = c("k"), label_points = TRUE, main = "Intercept-only model")
 plot(loo_hs, diagnostic = c("k"), label_points = TRUE, main = "Horseshoe prior model")
-
-mtext(text = 'PSIS diagnostic plot', side = 3, line = 0, outer = TRUE)
 ```
 
-### ROC Plots
-```{r, echo = F}
+```{r, echo = F, fig.cap = 'Receiver-Operating Characteristic (ROC) Curves for all models'}
 par(mfrow=c(2, 2))
 plot(perffull, main='Full model ROC')
 plot(perfred, main='Reduced model ROC')
 plot(perfint, main='Intercept-only model ROC')
 plot(perfhs, main='Horseshoe prior model ROC')
+```
+
+```{r, echo = F}
+rf_metrics <- c(0.418, 0.541, 0.855, 0.585, 0.698)
+gb_metrics <- c(0.414, 0.550, 0.845, 0.585, 0.792)
+svm_metrics <- c(0.348, 0.519, 0.816, 0.543, 0.667)
+
+ref_paper_metrics <- as.data.frame(rbind(rf_metrics, gb_metrics, svm_metrics))
+rownames(ref_paper_metrics) <- c("Random forests", "Gradient boosting", "SVM radial")
+colnames(ref_paper_metrics) <- c("mcc", "tpr", "tnr", "accuracy", "auc")
+knitr::kable(ref_paper_metrics, caption = "Survival prediction results of two-predictor reference paper models - mean of 100 iterations")
 ```
