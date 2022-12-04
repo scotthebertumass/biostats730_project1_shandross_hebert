@@ -4,8 +4,10 @@ author: "Li Shandross and Scott Hebert"
 date: '2022-12-02'
 output:
    pdf_document: 
-      toc: true
-      toc_depth: 2
+     toc: yes
+     toc_depth: 2
+     fig_width: 9
+     fig_height: 6
 ---
 
 ```{r setup, include=FALSE}
@@ -228,13 +230,13 @@ $logit(\theta_i) = 3.94 + 0.03 a_i - 0.00 m_i - 0.00 h_i + 0.00 k_i + 0.00 d_i -
 ## Horseshoe prior-induced shrinkage
 As shown above by the fitted model, the horseshoe prior successfully shrunk most variables' coefficients to zero, except for the most relevant ones supported by the data. These important predictors included serum creatinine, ejection fraction, and age. While we provided the initial guess of two relevant predictors, the addition of age remains consistent with the reference paper results, which showed age as a potential third most important predictor. The shrinkage described is shown in the figure below, with the intercept term separate from the predictors given a difference in scale.  
 
-```{r, include=F}
+```{r, echo=F}
 comp_plot_alpha <- posterior_vs_prior(hs_mod, color_by="none", pars="alpha")
 comp_plot_beta <- posterior_vs_prior(hs_mod, color_by="parameter", pars="beta")
 
 comp_plot_alpha + comp_plot_beta +
   plot_annotation(title = 'Horseshoe Prior Posterior Comparison') +
-  plot_layout(ncol = 2, guides='collect') &
+  plot_layout(ncol = 2, widths = c(1, 3), guides='collect') &
   theme(legend.position='bottom')
 ```
 
