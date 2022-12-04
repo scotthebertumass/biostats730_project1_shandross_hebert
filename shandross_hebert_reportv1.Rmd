@@ -35,6 +35,8 @@ heartt <- heart[sample(nrow(heart), 100), ]
 head(heartt)
 ```
 
+\newpage
+
 # Abstract
 
 [maximum 200 words]
@@ -156,16 +158,16 @@ intmod <- brm(formula = DEATH_EVENT ~ 1,
 # summary(intmod)
 
 # Horseshoe model
-if(file.exists("output/hs_mod.rds")){
-	hs_mod <- read_rds("output/hs_mod.rds")
-} else {
 	D <- ncol(heart) - 1
 	n <- nrow(heart)
 	p0 <- 2 # prior guess for the number of relevant variables
 	sigma <- 1 / sqrt(mean(heart$DEATH_EVENT) * (1-mean(heart$DEATH_EVENT))) # pseudo sigma
 	tau0 <- p0/(D-p0) * sigma/sqrt(n)
 	prior_coeff <- hs(df=1, global_df=1, global_scale = tau0) # tau ∼ half-Cauchy(0, tau0^2)
-
+	
+if(file.exists("output/hs_mod.rds")){
+	hs_mod <- read_rds("output/hs_mod.rds")
+} else {
 	hs_mod <- stan_glm(DEATH_EVENT ~ ., 
                         data = heart, 
                         family = binomial(), 
@@ -182,7 +184,7 @@ if(file.exists("output/hs_mod.rds")){
 ```
 
 ## In-sample checks
-After the models were tuned and finalized, we performed in-sample checks. This included binned residual plots plotted against ejection fraction and serum creatinine (the two variables deemed most important by the reference paper the horseshoe prior model). A log transformation was completed on the serum creatinine variable in these plots for readibility. These binned residuals generally looked okay, though the no predictor model may have an issue of over predicting survival at low ejection fraction levels (see Appendix).  
+After the models were tuned and finalized, we performed in-sample checks. This included binned residual plots plotted against ejection fraction and serum creatinine (the two variables deemed most important by the reference paper the horseshoe prior model). A log transformation was completed on the serum creatinine variable in these plots for readibility.  
 
 Following our assessment of residuals, we performed posterior predictive checks using three summary statistics. These test quantities were created to evaluate any discrepancies between the model simulations and the true data in terms of predicted survival proportions under three scenarios: overall, among patients with a normal ejection fraction, and among patients with normal serum creatinine levels. A healthy range for ejection fraction is defined as greater than 40% in the paper by Chicco & Jurman while a healthy serum creatinine level is less than 1.2 mg/dL (Mayo Clinic). The test statistics are labeled as follows:  
 
@@ -193,7 +195,10 @@ Following our assessment of residuals, we performed posterior predictive checks 
 - T3: Proportion of survival among patients with serum creatinine < 1.2 mg/dL
 
 ## Out-of-sample checks
-We then perform leave-one-out (LOO) cross-validation on the four models to check for influential points and prediction skill. We use the resulting ELPD values, along with evaluation metrics suited for binary outcome data like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models. We do not include a PSIS-LOO probability interval transform density because we are performing logistic regression, not linear regression.  
+We then perform leave-one-out (LOO) cross-validation on the four models to check for influential points, goodness of fit, and model comparison. We do not include a PSIS-LOO probability interval transform density because we are performing logistic regression, not linear regression, and we find issues with using this comparison.  
+
+## Model comparison
+To compare model prediction accuracy, we use the ELPD values from the LOO cross-validation, along with evaluation metrics suited for binary outcome data like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models.  
 
 
 # Results
@@ -223,29 +228,50 @@ $logit(\theta_i) = 3.94 + 0.03 a_i - 0.00 m_i - 0.00 h_i + 0.00 k_i + 0.00 d_i -
 ## Horseshoe prior-induced shrinkage
 As shown above by the fitted model, the horseshoe prior successfully shrunk most variables' coefficients to zero, except for the most relevant ones supported by the data. These important predictors included serum creatinine, ejection fraction, and age. While we provided the initial guess of two relevant predictors, the addition of age remains consistent with the reference paper results, which showed age as a potential third most important predictor. The shrinkage described is shown in the figure below, with the intercept term separate from the predictors given a difference in scale.  
 
-```{r}
+```{r, include=F}
 comp_plot_alpha <- posterior_vs_prior(hs_mod, color_by="none", pars="alpha")
 comp_plot_beta <- posterior_vs_prior(hs_mod, color_by="parameter", pars="beta")
 
 comp_plot_alpha + comp_plot_beta +
   plot_annotation(title = 'Horseshoe Prior Posterior Comparison') +
   plot_layout(ncol = 2, guides='collect') &
+  theme(legend.position='bottom')
 ```
 
 ## In-sample checks
 ```{r, include = F}
-# Posterior prediction for full model, intercept-only model, 
-# and reduced model
+# Posterior prediction for all models
 ynewfull <- posterior_predict(fullmod)
 ynewint <- posterior_predict(intmod)
 ynewred <- posterior_predict(redmod)
+ynewhs <- posterior_predict(hs_mod)
 ```
+The binned residuals plots generally looked okay, suggesting the current models were sufficient to proceed with, though the no predictor model may have an issue of over predicting survival at low ejection fraction levels (see Appendix).  
+
+All four models showed very accurate predictions for survival proportion without restriction on type of patient (T1). However, predictions for survival among patients with a normal ejection fraction (T2) was overestimated by every model except for the intercept-only model, which under predicted survival for this group. However, the horseshoe prior model had the best posterior predictive p-value of 0.766 by about 0.07. For T3, the proportion of survival for patients with normal serum creatinine levels, all models performed more similarly by underestimating survival proportion with all predictive p-values less than 0.25.  
+
+## Out-of-sample checks
+Afterward, out-of-sample model checks were performed. Leave-One-Out (LOO) cross-validation was performed on all of the models. Aside from 3 out of the 299 examples in the full model and 1 example in the horseshoe model which were defined as "okay" (< 0.7), all of the validations ended up with every value being "good" (< 0.5). Additionally, thee horseshoe prior model had the best ELPD of our four models, followed closely by the full model. These best two models had ELPD values more than two standard deviations less than the reduced and intercept-only models.  
+
+## Model comparison
+
+
+# Conclusion and discussion
+
+# Appendix
+
+## Source code
+
+## Supplemental figures
+
+### Binned residual plots
 
 ```{r, include = F}
 # Point estimates for all models
 ytildefull <- apply(ynewfull, 2, mean)
 ytildeint <- apply(ynewint, 2, mean)
 ytildered <- apply(ynewred, 2, mean)
+ytildehs <- apply(ynewhs, 2, mean)
 ```
 
 ```{r, include = F}
@@ -253,17 +279,8 @@ ytildered <- apply(ynewred, 2, mean)
 resfull <- heart$DEATH_EVENT - ytildefull
 resint <- heart$DEATH_EVENT - ytildeint
 resred <- heart$DEATH_EVENT - ytildered
-```
-
-```{r, include = F}
-# Posterior prediction
-ynew_si <- posterior_predict(hs_mod)
-# Point estimates for all models
-ytildehs <- apply(ynew_si, 2, mean)
-# Residuals for all models
 reshs <- heart$DEATH_EVENT - ytildehs
 ```
-
 
 ```{r, echo = F}
 par(mfrow = c(2, 2))
@@ -283,7 +300,7 @@ hs_res_creatinine <- binnedplot(log(heart$serum_creatinine), reshs, xlab = "log(
 mtext(text = 'Model residuals plotted against log serum creatinine', side = 3, line = 0, outer = TRUE)
 ```
 
-All four models showed very accurate predictions for survival proportion without restriction on type of patient (T1). However, predictions for survival among patients with a normal ejection fraction (T2) was overestimated by every model except for the intercept-only model, which under predicted survival for this group. However, the horseshoe prior model had the best posterior predictive p-value of 0.766 by about 0.07. For T3, the proportion of survival for patients with normal serum creatinine levels, all models performed more similarly by underestimating survival proportion with all predictive p-values less than 0.25.  
+### Test statistic plots
 
 Shown here is T2 for all of the models. For that test statistic, the full model has a predictive p-value of 0.836, the reduced model 0.940, the intercept-only model 0.094, and the horseshoe model 0.766. The horseshoe model performed the best in the case of patients with ejection fraction $> 40\%$.
 
@@ -340,7 +357,7 @@ t2_plotint <- ggplot(data = as_tibble(hs_t2int), aes(value)) +
   scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
 
 # T_2: prop(DEATH_EVENT == 0 | ejection_fraction > 40)
-ynew_ejection <- t(ynew_si) %>%
+ynew_ejection <- t(ynewhs) %>%
 	as_tibble() %>%
 	cbind(heart$ejection_fraction) %>%
 	filter(`heart$ejection_fraction` > 40)
@@ -361,9 +378,7 @@ t2_plotfull + t2_plotred + t2_plotint + t2_ploths +
   theme(legend.position='bottom')
 ```
 
-## Out-of-sample checks
-Afterward, out-of-sample model checks were performed. Leave-One-Out (LOO) cross-validation was performed on all of the models. Aside from 3 out of the 299 examples in the full model and 1 example in the horseshoe model which were defined as "okay" (< 0.7), all of the validations ended up with every value being "good" (< 0.5). Additionally, thee horseshoe prior model had the best ELPD of our four models, followed closely by the full model. These best two models had ELPD values more than two standard deviations less than the reduced and intercept-only models.  
-
+### PSIS plots
 ```{r, include = F}
 loo_full <- loo(fullmod, save_psis = TRUE)
 loo_red <- loo(redmod, save_psis = TRUE)
@@ -380,11 +395,3 @@ plot(loo_hs, diagnostic = c("k"), label_points = TRUE, main = "Horseshoe prior m
 
 mtext(text = 'PSIS diagnostic plot', side = 3, line = 0, outer = TRUE)
 ```
-
-# Conclusion and discussion
-
-# Appendix
-
-## Source code
-
-## Supplemental figures
