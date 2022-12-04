@@ -43,7 +43,7 @@ head(heartt)
 
 Cardiovascular diseases (CVDs) are a group of disorders of the heart and blood vessels which account for roughly 17 million deaths worldwide annually. CVDs are especially prevalent in industrialized countries, yet current evaluation of the disease progression in various CVDs, especially heart failure, remains lacking. Heart failure is one type of CVD that occurs when the heart fails to pump sufficient blood to the rest of the body. Prediction of heart failure outcome is of vital importance in clinical practice throughout the world but has not yielded promising results.  
 
-A study by Chicco & Jurman highlighted the potential of machine learning methods to provide physicians with better tools to predict heart failure patient outcomes. The authors analyzed a data set of 299 heart failure patient medical records originally released by Ahmad and colleagues. Chicco & Jurman investigated ten types of machine learning methods using all predictors in the dataset and performed feature selection to determine the most important predictors. Random forests yielded the best results of the ten techniques while feature selection showed serenade creatinine and ejection fraction to be the best predictors. A random forests model using only these top two predictors outperformed models with all available predictors, which also included age, anaemia, high blood pressure, blood creatinine phosphokinase, diabetes, blood platelets, sex, serum sodium, and smoking status.  
+A study by Chicco & Jurman highlighted the potential of machine learning methods to provide physicians with better tools to predict heart failure patient outcomes. The authors analyzed a data set of 299 heart failure patient medical records originally released by Ahmad and colleagues. Chicco & Jurman investigated ten types of machine learning methods using all predictors in the dataset and performed feature selection to determine the most important predictors. Random forests yielded the best results of the ten techniques while feature selection showed several creatinine and ejection fraction to be the best predictors. A random forests model using only these top two predictors outperformed models with all available predictors (12 total), which also included age, anaemia, high blood pressure, blood creatinine phosphokinase, diabetes, blood platelets, sex, serum sodium, and smoking status.  
 
 This project utilizes the same dataset as Chicco & Jurman, but it utilizes a Bayesian logistic regression model in order to compare Bayesian methods to the machine learning methods of the reference paper.  
 
@@ -74,8 +74,8 @@ $logit(\theta_i) = \beta_0 + \beta_1 a_i + \beta_2 m_i + \beta_3 h_i + \beta_4 k
 $\beta_0 \sim N(0, 1)$   
 $\beta_j | \lambda_j, \tau \sim N(0, \lambda_j \tau)$   
 $\lambda_j \sim C^+(0, 1)$, $j=1, \cdots, P$   
-$\tau \sim C^+(0, \tau_0)$ where $\tau_0 = \frac{p_0}{P-p_0} \frac{\sigma}{\sqrt{n}}$   
-$\sigma$ is approximated with pseudo variance $\tilde{\sigma}^2=1/\mu(1-\mu)$ for a non-gaussian link  
+$\tau \sim C^+(0, \tau_0)$ where $\tau_0 = \frac{p_0}{P-p_0} \frac{\sigma}{\sqrt{n}} = 0.025$   
+$\sigma$ is approximated with pseudo variance $\tilde{\sigma}^2=1/\mu(1-\mu) = 2.142$ for a non-gaussian link  
 
 (Horseshoe priors are described further in the Horseshoe priors subsection.)  
 
@@ -110,6 +110,8 @@ Models are implemented using the packages `brms` and `rstanarm` with additional 
 The horseshoe is a type of Bayesian prior (developed by Piironen and Vehtari) that serves as a shrinkage method to improve model fit. This prior is named for its U-shape that resembles a horseshoe and determines the constraints on coefficient estimates. Coefficients associated with predictors weakly supported by the data are shrunk very close to zero while coefficients more strongly supported by the data experience minimal shrinkage.  
 
 We chose to explore usage of the horseshoe prior for several reasons. First, results from the reference paper showed that the models with ejection fraction and serum creatinine as the only predictors outperformed models using all predictors. This suggests that constraining coefficient estimates of unimportant predictors may yield better prediction accuracy. Second, as the horseshoe prior only shrinks coefficients of unsupported variables towards zero, it provides an interesting compromise between the reduced model and the full model described above. Third, the horseshoe prior was out of the scope of the Applied Bayesian Modeling class, and this project serves as an opportunity to learn how to apply a new type of prior.  
+
+When specifying a horseshoe prior, it is necessary to make a prior guess at the number of relevant variables. Based on the work from Chicco & Jurman, we set this value equal to two. Other parameter values such as local and global degrees of freedom, global scale, etc. are chosen based on recommendations from "Sparsity information and regularization in the horseshoe and other shrinkage priors" by Piironen and Vehtari.  
 
 ## Initial checks and validation
 Before running the models on the full dataset, we first performed an initial test of each model on a smaller sample of the data with few iterations for some preliminary validation. The models passed these initial checks, allowing us to proceed with the chosen four models.   
@@ -191,11 +193,46 @@ Following our assessment of residuals, we performed posterior predictive checks 
 - T3: Proportion of survival among patients with serum creatinine < 1.2 mg/dL
 
 ## Out-of-sample checks
-We then perform leave-one-out (LOO) cross-validation on the four models and use the resulting ELPD values, along with evaluation metrics suited for binary outcome data like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models. We do not include a  
+We then perform leave-one-out (LOO) cross-validation on the four models to check for influential points and prediction skill. We use the resulting ELPD values, along with evaluation metrics suited for binary outcome data like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models. We do not include a PSIS-LOO probability interval transform density because we are performing logistic regression, not linear regression.  
 
 
 # Results
 
+## Fitted models
+We obtain the following model fits for our four Bayesian logistic regression models.   
+
+Intercept-only model
+
+$y_i \sim Bern(\theta_i)$   
+$logit(\theta_i) = -0.75$
+
+Full model
+
+$y_i \sim Bern(\theta_i)$   
+$logit(\theta_i) = 10.78 + 0.05 a_i - 0.01 m_i - 0.12 h_i + 0.00 k_i + 0.15 d_i - 0.08 e_i - 0.00 p_i - 0.57 x_i + 0.72 c_i - 0.07 s_i - 0.02 g_i$ 
+
+Reduced model
+
+$y_i \sim Bern(\theta_i)$   
+
+Horseshoe model
+
+$y_i \sim Bern(\theta_i)$   
+$logit(\theta_i) = 3.94 + 0.03 a_i - 0.00 m_i - 0.00 h_i + 0.00 k_i + 0.00 d_i - 0.07 e_i - 0.00 p_i - 0.00 x_i + 0.60 c_i - 0.00 s_i - 0.00 g_i$ 
+
+## Horseshoe prior-induced shrinkage
+As shown above by the fitted model, the horseshoe prior successfully shrunk most variables' coefficients to zero, except for the most relevant ones supported by the data. These important predictors included serum creatinine, ejection fraction, and age. While we provided the initial guess of two relevant predictors, the addition of age remains consistent with the reference paper results, which showed age as a potential third most important predictor. The shrinkage described is shown in the figure below, with the intercept term separate from the predictors given a difference in scale.  
+
+```{r}
+comp_plot_alpha <- posterior_vs_prior(hs_mod, color_by="none", pars="alpha")
+comp_plot_beta <- posterior_vs_prior(hs_mod, color_by="parameter", pars="beta")
+
+comp_plot_alpha + comp_plot_beta +
+  plot_annotation(title = 'Horseshoe Prior Posterior Comparison') +
+  plot_layout(ncol = 2, guides='collect') &
+```
+
+## In-sample checks
 ```{r, include = F}
 # Posterior prediction for full model, intercept-only model, 
 # and reduced model
@@ -324,8 +361,8 @@ t2_plotfull + t2_plotred + t2_plotint + t2_ploths +
   theme(legend.position='bottom')
 ```
 
-Afterward, out-of-sample model checks were performed. Leave-One-Out (LOO) cross-validation was performed on all of the models. Aside from 3 out of the 299 examples in the full model and 1 example in the horseshoe model which were defined as "okay" (< 0.7), all of the validations ended up with every value being "good" (< 0.5). 
-
+## Out-of-sample checks
+Afterward, out-of-sample model checks were performed. Leave-One-Out (LOO) cross-validation was performed on all of the models. Aside from 3 out of the 299 examples in the full model and 1 example in the horseshoe model which were defined as "okay" (< 0.7), all of the validations ended up with every value being "good" (< 0.5). Additionally, thee horseshoe prior model had the best ELPD of our four models, followed closely by the full model. These best two models had ELPD values more than two standard deviations less than the reduced and intercept-only models.  
 
 ```{r, include = F}
 loo_full <- loo(fullmod, save_psis = TRUE)
