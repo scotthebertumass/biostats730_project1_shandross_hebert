@@ -3,8 +3,9 @@ title: "Survival Prediction After Heart Failure"
 author: "Li Shandross and Scott Hebert"
 date: '2022-12-02'
 output:
-  pdf_document: default
-  html_document: default
+   pdf_document: 
+      toc: true
+      toc_depth: 2
 ---
 
 ```{r setup, include=FALSE}
@@ -190,7 +191,7 @@ Following our assessment of residuals, we performed posterior predictive checks 
 - T3: Proportion of survival among patients with serum creatinine < 1.2 mg/dL
 
 ## Out-of-sample checks
-We then perform leave-one-out (LOO) cross-validation on the four models and use the resulting ELPD values, along with evaluation metrics like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models.  
+We then perform leave-one-out (LOO) cross-validation on the four models and use the resulting ELPD values, along with evaluation metrics suited for binary outcome data like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models. We do not include a  
 
 
 # Results
@@ -217,7 +218,7 @@ resint <- heart$DEATH_EVENT - ytildeint
 resred <- heart$DEATH_EVENT - ytildered
 ```
 
-```{r}
+```{r, include = F}
 # Posterior prediction
 ynew_si <- posterior_predict(hs_mod)
 # Point estimates for all models
@@ -248,8 +249,6 @@ mtext(text = 'Model residuals plotted against log serum creatinine', side = 3, l
 All four models showed very accurate predictions for survival proportion without restriction on type of patient (T1). However, predictions for survival among patients with a normal ejection fraction (T2) was overestimated by every model except for the intercept-only model, which under predicted survival for this group. However, the horseshoe prior model had the best posterior predictive p-value of 0.766 by about 0.07. For T3, the proportion of survival for patients with normal serum creatinine levels, all models performed more similarly by underestimating survival proportion with all predictive p-values less than 0.25.  
 
 Shown here is T2 for all of the models. For that test statistic, the full model has a predictive p-value of 0.836, the reduced model 0.940, the intercept-only model 0.094, and the horseshoe model 0.766. The horseshoe model performed the best in the case of patients with ejection fraction $> 40\%$.
-
-### Full model 
 
 ```{r, echo = F}
 true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
@@ -345,3 +344,10 @@ plot(loo_hs, diagnostic = c("k"), label_points = TRUE, main = "Horseshoe prior m
 mtext(text = 'PSIS diagnostic plot', side = 3, line = 0, outer = TRUE)
 ```
 
+# Conclusion and discussion
+
+# Appendix
+
+## Source code
+
+## Supplemental figures
