@@ -200,7 +200,7 @@ Following our assessment of residuals, we performed posterior predictive checks 
 We then perform leave-one-out (LOO) cross-validation on the four models to check for influential points, goodness of fit, and model comparison. We do not include a PSIS-LOO probability interval transform density because we are performing logistic regression, not linear regression, and we find issues with using this comparison.  
 
 ## Model comparison
-To compare model prediction accuracy, we use the ELPD values from the LOO cross-validation, along with evaluation metrics suited for binary outcome data like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models.  
+To compare model prediction accuracy, we use the ELPD values from the LOO cross-validation, along with evaluation metrics suited for binary outcome data like Matthew's Correlation Coefficient (MCC), true positive rate, true-rate, accuracy, and ROC area under the curve. These additional metrics are taken from the reference paper and allow for comparison against Chicco & Jurman's machine learning models. The resulting values are calculated for models fit using all 299 observations, with 4000 draws from the posterior predictive distribution, metrics calculated for each draw and averaged. These are essentially training metrics since a model has seen all of the data, meaning accuracy may be somewhat inflated compared to the same metrics calculated on a test set.  
 
 
 # Results
@@ -241,6 +241,18 @@ comp_plot_alpha + comp_plot_beta +
 ```
 
 ## In-sample checks
+The binned residuals plots generally looked okay, suggesting the current models were sufficient to proceed with, though the no predictor model may have an issue of over predicting survival at low ejection fraction levels (see Appendix).  
+
+All four models showed very accurate predictions for survival proportion without restriction on type of patient (T1). However, predictions for survival among patients with a normal ejection fraction (T2) was overestimated by every model except for the intercept-only model, which under predicted survival for this group. However, the horseshoe prior model had the best posterior predictive p-value of 0.766 by about 0.07. For T3, the proportion of survival for patients with normal serum creatinine levels, all models performed more similarly by underestimating survival proportion with all predictive p-values less than 0.25.  
+
+## Out-of-sample checks
+Leave-One-Out (LOO) cross-validation was performed on all of the models with the following results. Aside from 3 out of the 299 examples in the full model and 1 example in the horseshoe model which were defined as "okay" (< 0.7), all of the validations ended up with every value being "good" (< 0.5). Additionally, the horseshoe prior model had the best ELPD (-122.1) of our four models, followed closely by the full model (-125.1). These best two models had ELPD values more than two standard deviations less than the reduced and intercept-only models.  
+
+## Model comparison
+Unlike with most of our previous in-sample and out-of-sample checks, the full model performs slightly better than the horseshoe prior model in terms of the prediction accuracy metrics shown in the table below. This is a little surprising, especially since it inconsistent with the findings from Chicco & Jurman. However, this may simply be a quirk of essentially only evaluating "training" set results, with test set results being consistent with the reference paper. Alternatively, Bayesian modeling may simply perform better with more predictors on this dataset compared to machine learning.  
+
+Comparisons against the top machine learning model's prediction accuracy show that both the horseshoe prior and full models perform competitively against this random forests model, beating it for all metrics shown except for true negative rate (and ELPD which are not given). As seen in the table, the gains in more often correctly identifying true positives seem to be the source of higher accuracy, AUC, and MCC values. Once again, though, our models' metric values are essentially training set results, which may be higher than those of test set results like that of the random forests model.  
+
 ```{r, include = F}
 # Posterior prediction for all models
 ynewfull <- posterior_predict(fullmod)
@@ -248,14 +260,114 @@ ynewint <- posterior_predict(intmod)
 ynewred <- posterior_predict(redmod)
 ynewhs <- posterior_predict(hs_mod)
 ```
-The binned residuals plots generally looked okay, suggesting the current models were sufficient to proceed with, though the no predictor model may have an issue of over predicting survival at low ejection fraction levels (see Appendix).  
 
-All four models showed very accurate predictions for survival proportion without restriction on type of patient (T1). However, predictions for survival among patients with a normal ejection fraction (T2) was overestimated by every model except for the intercept-only model, which under predicted survival for this group. However, the horseshoe prior model had the best posterior predictive p-value of 0.766 by about 0.07. For T3, the proportion of survival for patients with normal serum creatinine levels, all models performed more similarly by underestimating survival proportion with all predictive p-values less than 0.25.  
+```{r, include = F}
+loo_full <- loo(fullmod, save_psis = TRUE)
+loo_red <- loo(redmod, save_psis = TRUE)
+loo_int <- loo(intmod, save_psis = TRUE)
+loo_hs <- loo(hs_mod, save_psis = TRUE)
+```
 
-## Out-of-sample checks
-Afterward, out-of-sample model checks were performed. Leave-One-Out (LOO) cross-validation was performed on all of the models. Aside from 3 out of the 299 examples in the full model and 1 example in the horseshoe model which were defined as "okay" (< 0.7), all of the validations ended up with every value being "good" (< 0.5). Additionally, thee horseshoe prior model had the best ELPD of our four models, followed closely by the full model. These best two models had ELPD values more than two standard deviations less than the reduced and intercept-only models.  
+```{r, include=F}
+# Full
+predfull <- prediction(fitted(fullmod)[, 1], heart$DEATH_EVENT)
+perffull <- performance(predfull, "tpr", "fpr")
 
-## Model comparison
+full_confusion_full <- tibble(metric=c("tn", "fp", "fn", "tp"))
+for (i in 1:4000) {
+	full_pred_temp <- ynewfull[i,]
+	full_confusion_temp <- tibble(death=heart$DEATH_EVENT, preds=full_pred_temp) %>%
+		group_by(death, preds) %>%
+		summarize(n = n())
+	full_confusion_full[[i+1]] <- full_confusion_temp$n
+}
+
+full_confusion_matrix <- pivot_longer(full_confusion_full, cols = 2:4001, names_to = "sample", values_to = "value") %>%
+	pivot_wider(names_from = "metric", values_from = "value") %>%
+	mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299),
+			  mcc = (tn *tp-fn* fp)/sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))) 
+full_metrics <- full_confusion_matrix %>%
+	summarize(mean_tnr=mean(tnr), mean_tpr=mean(tpr), mean_accuracy=mean(accuracy), mean_mcc=mean(mcc)) %>%
+	mutate(elpd = loo_full$estimates[1, 1], auc = performance(predfull,"auc")@y.values[[1]])
+```
+
+```{r, include=F}
+# Reduced
+predred <- prediction(fitted(redmod)[,1], heart$DEATH_EVENT)
+perfred <- performance(predred, "tpr", "fpr")
+
+red_confusion_full <- tibble(metric=c("tn", "fp", "fn", "tp"))
+for (i in 1:4000) {
+	red_pred_temp <- ynewred[i,]
+	red_confusion_temp <- tibble(death=heart$DEATH_EVENT, preds=red_pred_temp) %>%
+		group_by(death, preds) %>%
+		summarize(n = n())
+	red_confusion_full[[i+1]] <- red_confusion_temp$n
+}
+
+red_confusion_matrix <- pivot_longer(red_confusion_full, cols = 2:4001, names_to = "sample", values_to = "value") %>%
+	pivot_wider(names_from = "metric", values_from = "value") %>%
+	mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299),
+			  mcc = (tn *tp-fn* fp)/sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))) 
+red_metrics <- red_confusion_matrix %>%
+	summarize(mean_tnr=mean(tnr), mean_tpr=mean(tpr), mean_accuracy=mean(accuracy), mean_mcc=mean(mcc)) %>%
+	mutate(elpd = loo_red$estimates[1, 1], auc = performance(predred,"auc")@y.values[[1]])
+```
+
+```{r, include=F}
+# Intercept only
+predint <- prediction(fitted(intmod)[,1], heart$DEATH_EVENT)
+perfint <- performance(predint, "tpr", "fpr")
+
+int_confusion_full <- tibble(metric=c("tn", "fp", "fn", "tp"))
+for (i in 1:4000) {
+	int_pred_temp <- ynewint[i,]
+	int_confusion_temp <- tibble(death=heart$DEATH_EVENT, preds=int_pred_temp) %>%
+		group_by(death, preds) %>%
+		summarize(n = n())
+	int_confusion_full[[i+1]] <- int_confusion_temp$n
+}
+
+int_confusion_matrix <- pivot_longer(int_confusion_full, cols = 2:4001, names_to = "sample", values_to = "value") %>%
+	pivot_wider(names_from = "metric", values_from = "value") %>%
+	mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299),
+			  mcc = (tn *tp-fn* fp)/sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))) 
+int_metrics <- int_confusion_matrix %>%
+	summarize(mean_tnr=mean(tnr), mean_tpr=mean(tpr), mean_accuracy=mean(accuracy), mean_mcc=mean(mcc)) %>%
+	mutate(elpd = loo_int$estimates[1, 1], auc = performance(predint,"auc")@y.values[[1]])
+```
+	
+```{r, include=F}
+# Horseshoe
+predhs <- prediction(fitted(hs_mod), heart$DEATH_EVENT)
+perfhs <- performance(predhs, "tpr", "fpr")
+
+hs_confusion_full <- tibble(metric=c("tn", "fp", "fn", "tp"))
+for (i in 1:4000) {
+	hs_pred_temp <- ynewhs[i,]
+	hs_confusion_temp <- tibble(death=heart$DEATH_EVENT, preds=hs_pred_temp) %>%
+		group_by(death, preds) %>%
+		summarize(n = n())
+	hs_confusion_full[[i+1]] <- hs_confusion_temp$n
+}
+
+hs_confusion_matrix <- pivot_longer(hs_confusion_full, cols = 2:4001, names_to = "sample", values_to = "value") %>%
+	pivot_wider(names_from = "metric", values_from = "value") %>%
+	mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299),
+			  mcc = (tn *tp-fn* fp)/sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))) 
+hs_metrics <- hs_confusion_matrix %>%
+	summarize(mean_tnr=mean(tnr), mean_tpr=mean(tpr), mean_accuracy=mean(accuracy), mean_mcc=mean(mcc)) %>%
+	mutate(elpd = loo_hs$estimates[1, 1], auc = performance(predhs,"auc")@y.values[[1]])
+```
+
+```{r, echo = F}
+all_metrics <- rbind(full_metrics, red_metrics, int_metrics, hs_metrics) %>%
+	cbind(model = c("Full", "Reduced", "Intercept-only", "Horseshoe prior")) %>%
+	dplyr::select(model, elpd, mean_mcc, mean_tpr, mean_tnr, mean_accuracy, auc) %>%
+	arrange(desc(elpd)) %>%
+  mutate(across(where(is.numeric), round, digits=3), elpd=round(elpd, 1)) 
+knitr::kable(all_metrics)
+```
 
 
 # Conclusion and discussion
@@ -381,13 +493,6 @@ t2_plotfull + t2_plotred + t2_plotint + t2_ploths +
 ```
 
 ### PSIS plots
-```{r, include = F}
-loo_full <- loo(fullmod, save_psis = TRUE)
-loo_red <- loo(redmod, save_psis = TRUE)
-loo_int <- loo(intmod, save_psis = TRUE)
-loo_hs <- loo(hs_mod, save_psis = TRUE)
-```
-
 ```{r, echo = F}
 par(mfrow=c(2, 2))
 plot(loo_full, diagnostic = c("k"), label_points = TRUE, main = "Full model")
@@ -396,4 +501,13 @@ plot(loo_int, diagnostic = c("k"), label_points = TRUE, main = "Intercept-only m
 plot(loo_hs, diagnostic = c("k"), label_points = TRUE, main = "Horseshoe prior model")
 
 mtext(text = 'PSIS diagnostic plot', side = 3, line = 0, outer = TRUE)
+```
+
+### ROC Plots
+```{r, echo = F}
+par(mfrow=c(2, 2))
+plot(perffull, main='Full model ROC')
+plot(perfred, main='Reduced model ROC')
+plot(perfint, main='Intercept-only model ROC')
+plot(perfhs, main='Horseshoe prior model ROC')
 ```
