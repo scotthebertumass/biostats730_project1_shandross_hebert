@@ -41,7 +41,11 @@ head(heartt)
 
 # Abstract
 
-[maximum 200 words]
+Cardiovascular disease (CVD) is a major cause of death worldwide, causing around 17,000,000 deaths per year. Current analysis of CVD progression is lacking. One study, Chicco & Jurman, sought to better evaluate prediction of survival of heart failure patients in particular using machine learning methods. However, we sought to evaluate this prediction using Bayesian logistic regression, including one such model that uses a horseshoe prior. 
+
+These Bayesian logistic regression models were run using data of 299 heart failure patients (the same data as Chicco & Jurman). The models all performed similarly on in-sample model checks, but the model using all available predictors and the horseshoe prior model performed the best – those models also outperformed the machine learning models in the reference paper (aside from the true negative rate), based on metrics including the Matthews Correlation Coefficient (MCC) and accuracy. 
+
+Overall, the horseshoe prior model and the full model have similar performance, but the horseshoe model has the added benefit of simplicity, utilizing just 3 of the 12 available predictors. However, for future research, Bayesian hierarchical regression (and Bayesian survival analysis) should be run to utilize the one predictor that none of the other Bayesian models used – the follow-up time variable. 
 
 # Introduction
 
@@ -371,9 +375,23 @@ knitr::kable(all_metrics, caption = "Survival prediction results of all models -
 
 # Conclusion and discussion
 
+Four Bayesian logistic regression models were created for comparison to certain machine learning methods, especially a random forests model, which performed best in the reference paper. All of the Bayesian models performed well in in-sample model checks, although there was some underprediction of survival among the models regarding patients with normal ejection fraction and normal serum creatinine levels. The Bayesian models also all performed well in LOO cross-validation. However, the top two Bayesian models were the full model and the horseshoe prior model. 
+
+The full model performed marginally better than the horseshoe prior model in terms of its MCC, true positive and negative rates, accuracy, and AUC values, but the horseshoe prior model had a marginally better ELPD value. However, had a train-test split been done on the models, the horseshoe prior model may have outperformed the full model in all of the aforementioned metrics. 
+
+Considering the similar performance of the full and horseshoe prior models, the horseshoe prior model has a distinct advantage over the full model, which is its simplicity. Since the horseshoe prior model shrunk all but three of the predictors, a model could be run with simpler data that is easier to collect in real-world examples. This could provide an advantage over the more complex full model if any model were used to create a tool for physicians and other health care providers to predict the survival of their patients who experience heart failure. And since the horseshoe prior model performed better than the machine learning models from the reference paper (aside from the true negative rate), it could provide further benefits in such cases, especially since the horseshoe prior model detailed here and the random forests model from the reference paper are similar in their simplicity. 
+
+For future research, a hierarchical Bayesian model could be created. Such a model could be created with groups utilizing the follow-up time variable. This model would be similar to the stratified logistic regression model mentioned in Chicco & Jurman. Another potential method of utilizing the follow-up time variable would be to conduct a Bayesian survival analysis model. 
+
+# References
+
+Chicco, D., Jurman, G. Machine learning can predict survival of patients with heart failure from serum creatinine and ejection fraction alone. BMC Med Inform Decis Mak 20, 16 (2020). https://doi.org/10.1186/s12911-020-1023-5
+
 # Appendix
 
 ## Source code
+
+https://github.com/scotthebertumass/biostats730_project1_shandross_hebert
 
 ## Supplemental figures
 
