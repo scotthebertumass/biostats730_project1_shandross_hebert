@@ -16,14 +16,17 @@ library(brms)
 library(arm)
 library(patchwork)
 library("ROCR")
+library(corrplot)
 ```
 
 ```{r}
 # Reading in data
 set.seed(1234)
-heart <- read.csv("heart_failure_clinical_records_dataset.csv")
+heart <- read.csv("../data/heart_failure_clinical_records_dataset.csv")
 heartt <- heart[sample(nrow(heart), 100), ]
 heartt
+
+corrplot(cor(heart), method="circle", type = "upper", addCoef.col = "black", tl.col="black", tl.srt=45, diag=FALSE)
 ```
 
 
@@ -129,8 +132,8 @@ summary(hs_mod)
 
 Prior-Posterior Comparison
 ```{r}
-comp_plot_alpha <- posterior_vs_prior(hs_mod, color_by="parameter", pars="alpha")
-comp_plot_beta <- posterior_vs_prior(hs_mod, color_by="parameter", pars="beta")
+(comp_plot_alpha <- posterior_vs_prior(hs_mod, color_by="none", pars="alpha"))
+(comp_plot_beta <- posterior_vs_prior(hs_mod, color_by="parameter", pars="beta"))
 
 comp_plot_alpha + comp_plot_beta +
   plot_annotation(title = 'Prior Posterior Comparison') +

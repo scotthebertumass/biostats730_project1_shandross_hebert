@@ -1,0 +1,646 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(brms)
+library(arm)
+library(loo)
+library(bayesplot)
+library(tidybayes)
+library(rstanarm)
+library(patchwork)
+library(ROCR)
+```
+
+```{r}
+# Reading in data
+set.seed(1234)
+#setwd("C:/UMass/730/Project")
+heart <- read.csv("..data/heart_failure_clinical_records_dataset.csv")
+heartt <- heart[sample(nrow(heart), 100), ]
+heartt
+```
+
+```{r}
+#dir.create("output")
+```
+
+```{r}
+# Full model with test data
+fullmodtest <- brm(formula = DEATH_EVENT ~ ., 
+                data = heartt,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 5000,
+                warmup = 500,
+                control = list(max_treedepth = 20),
+                cores = getOption("mc.cores", 4), 
+                file = "output/fullmodtest")
+```
+
+```{r}
+summary(fullmodtest)
+```
+
+```{r}
+fullmodtest2 <- brm(formula = DEATH_EVENT ~ ., 
+                data = heartt,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 2000,
+                warmup = 500,
+                control = list(max_treedepth = 15),
+                cores = getOption("mc.cores", 4), 
+                file = "output/fullmodtest2")
+```
+
+```{r}
+summary(fullmodtest2)
+```
+```{r}
+# Intercept-only model with test data
+intmodtest <- brm(formula = DEATH_EVENT ~ 1, 
+                data = heartt,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 2000,
+                warmup = 500,
+                control = list(max_treedepth = 15),
+                cores = getOption("mc.cores", 4), 
+                file = "output/intmodtest")
+```
+
+```{r}
+summary(intmodtest)
+```
+
+```{r}
+# Reduced model with test data
+redmodtest <- brm(formula = DEATH_EVENT ~ ejection_fraction + serum_creatinine, 
+                data = heartt,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 2000,
+                warmup = 500,
+                control = list(max_treedepth = 15),
+                cores = getOption("mc.cores", 4), 
+                file = "output/redmodtest")
+```
+
+```{r}
+summary(redmodtest)
+```
+
+```{r}
+# Full model test with 1,000 iterations
+fullmodtest3 <- brm(formula = DEATH_EVENT ~ ., 
+                data = heartt,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 1000,
+                warmup = 500,
+                control = list(max_treedepth = 15),
+                cores = getOption("mc.cores", 4), 
+                file = "output/fullmodtest3")
+```
+
+```{r}
+summary(fullmodtest3)
+```
+
+```{r}
+# Intercept-only model test with 1,000 iterations
+intmodtest2 <- brm(formula = DEATH_EVENT ~ 1, 
+                data = heartt,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 1000,
+                warmup = 500,
+                control = list(max_treedepth = 15),
+                cores = getOption("mc.cores", 4), 
+                file = "output/intmodtest2")
+```
+
+```{r}
+summary(intmodtest2)
+```
+
+```{r}
+# Reduced model test with 1,000 iterations
+redmodtest2 <- brm(formula = DEATH_EVENT ~ ejection_fraction + serum_creatinine, 
+                data = heartt,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 1000,
+                warmup = 500,
+                control = list(max_treedepth = 15),
+                cores = getOption("mc.cores", 4), 
+                file = "output/redmodtest2")
+```
+
+```{r}
+summary(redmodtest2)
+```
+
+```{r}
+# Full model
+fullmod <- brm(formula = DEATH_EVENT ~ ., 
+                data = heart,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 2000,
+                warmup = 1000,
+               control = list(max_treedepth = 20),
+                cores = getOption("mc.cores", 12), 
+                file = "output/fullmod4")
+```
+
+```{r}
+summary(fullmod)
+```
+
+```{r}
+# Intercept-only model
+intmod <- brm(formula = DEATH_EVENT ~ 1, 
+                data = heart,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 2000,
+                warmup = 1000,
+               control = list(max_treedepth = 20),
+                cores = getOption("mc.cores", 12), 
+                file = "output/intmod2")
+```
+
+```{r}
+summary(intmod)
+```
+
+```{r}
+# Reduced model
+redmod <- brm(formula = DEATH_EVENT ~ ejection_fraction + serum_creatinine, 
+                data = heart,
+                family = bernoulli(link = "logit"),
+                chains = 4, 
+                iter = 2000,
+                warmup = 1000,
+               control = list(max_treedepth = 20),
+                cores = getOption("mc.cores", 12), 
+                file = "output/redmod2")
+```
+
+```{r}
+summary(redmod)
+```
+
+## In-Sample Model Checking
+
+```{r}
+# Posterior prediction for full model, intercept-only model, 
+# and reduced model
+ynewfull <- posterior_predict(fullmod)
+ynewint <- posterior_predict(intmod)
+ynewred <- posterior_predict(redmod)
+```
+
+```{r}
+# Point estimates for all models
+ytildefull <- apply(ynewfull, 2, mean)
+ytildeint <- apply(ynewint, 2, mean)
+ytildered <- apply(ynewred, 2, mean)
+```
+
+```{r}
+# Residuals for all models
+resfull <- heart$DEATH_EVENT - ytildefull
+resint <- heart$DEATH_EVENT - ytildeint
+resred <- heart$DEATH_EVENT - ytildered
+```
+
+```{r}
+# Full model residuals plotted against age, binned
+binnedplot(heart$age, resfull,
+           xlab = "Age",
+           main = "Full model residuals plotted against age")
+```
+
+```{r}
+# Full model residuals plotted against ejection fraction, binned
+binnedplot(heart$ejection_fraction, resfull,
+           xlab = "Ejection fraction",
+           main = "Full model residuals plotted against ejection fraction")
+```
+
+```{r}
+# Full model residuals plotted against log serum creatinine, binned
+binnedplot(log(heart$serum_creatinine), resfull,
+           xlab = "log(serum creatinine)",
+           main = "Full model residuals plotted against log serum creatinine")
+```
+
+```{r}
+# Intercept-only model plotted against ejection fraction
+binnedplot(heart$ejection_fraction, resint,
+           xlab = "Ejection fraction",
+           main = "Intercept-only model residuals plotted against ejection fraction")
+```
+
+```{r}
+# Intercept-only model plotted against log serum creatinine
+binnedplot(log(heart$serum_creatinine), resint,
+           xlab = "log(serum creatinine)",
+           main = "Intercept-only model residuals plotted against log serum creatinine")
+```
+
+```{r}
+# Reduced model plotted against ejection fraction
+binnedplot(heart$ejection_fraction, resred,
+           xlab = "Ejection fraction",
+           main = "Reduced model residuals plotted against ejection fraction")
+```
+
+```{r}
+# Reduced model plotted against log serum creatinine
+binnedplot(log(heart$serum_creatinine), resred,
+           xlab = "log(serum creatinine)",
+           main = "Reduced model residuals plotted against log serum creatinine")
+```
+
+All of the models underpredict death at low ejection fraction levels. So, a posterior predictive check should be done for ejection fraction at or below 25. 
+
+```{r}
+# Summary statistic function
+summ_stat <- function(y, ejection_fraction)
+  sum(y * (ejection_fraction <= quantile(ejection_fraction, 0.15))) / sum((ejection_fraction) <= quantile(ejection_fraction, 0.15))
+```
+
+```{r}
+# Posterior predictive histogram for full model
+tobs <- summ_stat(heart$DEATH_EVENT, heart$ejection_fraction)
+tyrepfull <- apply(ynewfull, 1, summ_stat, heart$ejection_fraction)
+hist(tyrepfull, main = "Posterior predictive histogram for full model")
+abline(v = tobs)
+```
+
+```{r}
+# Posterior predictive histogram for intercept-only model
+tyrepint <- apply(ynewint, 1, summ_stat, heart$ejection_fraction)
+hist(tyrepint, xlim = c(0.1, 0.7), main = "Posterior predictive histogram for intercept-only model")
+abline(v = tobs)
+```
+
+```{r}
+# Posterior predictive histogram for reduced model
+tyrepred <- apply(ynewred, 1, summ_stat, heart$ejection_fraction)
+hist(tyrepred, main = "Posterior predictive histogram for reduced model")
+abline(v = tobs)
+```
+
+Based on these in-sample model checks, it seems that the full model actually performs a bit better than the reduced model, unlike the reference paper. This is a bit unsurprising, however, as the full model is more informed by the data than the reduced model. 
+
+## Out-of-Sample Model Checking
+
+## LOO Cross-Validation
+
+```{r}
+# Pareto k estimates, full model
+loo_full <- loo(fullmod, save_psis = TRUE)
+loo_full
+```
+
+```{r}
+# Pareto k estimates, intercept-only model
+loo_int <- loo(intmod, save_psis = TRUE)
+loo_int
+```
+
+```{r}
+# Pareto k estimates, reduced model
+loo_red <- loo(redmod, save_psis = TRUE)
+loo_red
+```
+
+```{r}
+# PSIS plot, full model
+plot(loo_full,
+     diagnostic = c("k"),
+     label_points = TRUE, 
+     main = "PSIS diagnositc plot - full model")
+```
+
+```{r}
+# PSIS plot, intercept-only model
+plot(loo_int,
+     diagnostic = c("k"),
+     label_points = TRUE, 
+     main = "PSIS diagnostic plot, intercept-only model")
+```
+
+```{r}
+# PSIS plot, reduced model
+plot(loo_red,
+     diagnostic = c("k"),
+     label_points = TRUE, 
+     main = "PSIS diagnostic plot, reduced model")
+```
+
+## Test statistics
+
+## T1: Proportion of Survival 
+
+```{r}
+# Full model
+true_t1 <- mean(heart$DEATH_EVENT == 0)
+hs_t1full <- sapply(1:nrow(ynewfull), function(x) mean(ynewfull[x, ] == 0))
+
+t1_plotfull <- ggplot(data = as_tibble(hs_t1full), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion, full model") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+t1_plotfull
+```
+
+```{r}
+mean(hs_t1full >= true_t1)
+```
+
+```{r}
+# Intercept-only model
+true_t1 <- mean(heart$DEATH_EVENT == 0)
+hs_t1int <- sapply(1:nrow(ynewint), function(x) mean(ynewint[x, ] == 0))
+
+t1_plotint <- ggplot(data = as_tibble(hs_t1int), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion, intercept-only model") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+t1_plotint
+```
+
+```{r}
+mean(hs_t1int >= true_t1)
+```
+
+```{r}
+# Reduced model
+true_t1 <- mean(heart$DEATH_EVENT == 0)
+hs_t1red <- sapply(1:nrow(ynewred), function(x) mean(ynewred[x, ] == 0))
+
+t1_plotred <- ggplot(data = as_tibble(hs_t1red), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t1, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion, reduced model") + 
+  theme_bw(base_size = 16) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue"))
+t1_plotred
+```
+
+```{r}
+mean(hs_t1red >= true_t1)
+```
+
+## T2: Proportion of Survival Among Patients with Ejection Fraction >40 Percent
+
+```{r}
+# Full model
+ynew_ejecfull <- t(ynewfull) %>% 
+  as_tibble() %>% 
+  cbind(heart$ejection_fraction) %>% 
+  filter(`heart$ejection_fraction` > 40)
+
+true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+hs_t2full <- sapply(1:(ncol(ynew_ejecfull) - 1), FUN = function(x) mean(ynew_ejecfull[, x] == 0))
+
+t2_plotfull <- ggplot(data = as_tibble(hs_t2full), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients w/ ejection fraction >40%, full model") + 
+  theme_bw(base_size = 12) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t2_plotfull
+```
+
+```{r}
+mean(hs_t2full >= true_t2)
+```
+
+```{r}
+# Intercept-only model
+ynew_ejecint <- t(ynewint) %>% 
+  as_tibble() %>% 
+  cbind(heart$ejection_fraction) %>% 
+  filter(`heart$ejection_fraction` > 40)
+
+true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+hs_t2int <- sapply(1:(ncol(ynew_ejecint) - 1), FUN = function(x) mean(ynew_ejecint[, x] == 0))
+
+t2_plotint <- ggplot(data = as_tibble(hs_t2int), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients w/ ejection fraction >40%, intercept-only model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t2_plotint
+```
+
+```{r}
+mean(hs_t2int >= true_t2)
+```
+
+```{r}
+# Reduced model
+ynew_ejecred <- t(ynewred) %>% 
+  as_tibble() %>% 
+  cbind(heart$ejection_fraction) %>% 
+  filter(`heart$ejection_fraction` > 40)
+
+true_t2 <- nrow(filter(heart, DEATH_EVENT == 0, ejection_fraction > 40)) / nrow(filter(heart, ejection_fraction > 40))
+hs_t2red <- sapply(1:(ncol(ynew_ejecred) - 1), FUN = function(x) mean(ynew_ejecred[, x] == 0))
+
+t2_plotred <- ggplot(data = as_tibble(hs_t2red), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t2, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients w/ ejection fraction >40%, reduced model") + 
+  theme_bw(base_size = 11) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t2_plotred
+```
+
+```{r}
+mean(hs_t2red >= true_t2)
+```
+
+## T3: Proportion of Survival Among Patients with Serum Creatinine <1.2
+
+```{r}
+# Full model
+ynew_creafull <- t(ynewfull) %>% 
+  as_tibble() %>% 
+  cbind(heart$serum_creatinine) %>% 
+  filter(`heart$serum_creatinine` < 1.2)
+
+true_t3 <- nrow(filter(heart, DEATH_EVENT == 0, serum_creatinine < 1.2)) / nrow(filter(heart, serum_creatinine < 1.2))
+hs_t3full <- sapply(1:(ncol(ynew_creafull) - 1), FUN = function(x) mean(ynew_creafull[, x] == 0))
+
+t3_plotfull <- ggplot(data = as_tibble(hs_t3full), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients with serum creatinine < 1.2, full model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t3_plotfull
+```
+
+```{r}
+mean(hs_t3full >= true_t3)
+```
+
+```{r}
+# Intercept-only model
+ynew_creaint <- t(ynewint) %>% 
+  as_tibble() %>% 
+  cbind(heart$serum_creatinine) %>% 
+  filter(`heart$serum_creatinine` < 1.2)
+
+true_t3 <- nrow(filter(heart, DEATH_EVENT == 0, serum_creatinine < 1.2)) / nrow(filter(heart, serum_creatinine < 1.2))
+hs_t3int <- sapply(1:(ncol(ynew_creaint) - 1), FUN = function(x) mean(ynew_creaint[, x] == 0))
+
+t3_plotint <- ggplot(data = as_tibble(hs_t3int), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients with serum creatinine < 1.2, intercept-only model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t3_plotint
+```
+
+```{r}
+mean(hs_t3int >= true_t3)
+```
+
+```{r}
+# Reduced model
+ynew_creared <- t(ynewred) %>% 
+  as_tibble() %>% 
+  cbind(heart$serum_creatinine) %>% 
+  filter(`heart$serum_creatinine` < 1.2)
+
+true_t3 <- nrow(filter(heart, DEATH_EVENT == 0, serum_creatinine < 1.2)) / nrow(filter(heart, serum_creatinine < 1.2))
+hs_t3red <- sapply(1:(ncol(ynew_creared) - 1), FUN = function(x) mean(ynew_creared[, x] == 0))
+
+t3_plotred <- ggplot(data = as_tibble(hs_t3red), aes(value)) + 
+  geom_histogram(aes(fill = "replicated")) + 
+  geom_vline(aes(xintercept = true_t3, color = "observed"), lwd = 1.5) + 
+  ggtitle("Survival proportion among patients with serum creatinine < 1.2, reduced model") + 
+  theme_bw(base_size = 10) + 
+  scale_color_manual(name = "", values = c("observed" = "darkblue")) + 
+  scale_fill_manual(name = "", values = c("replicated" = "lightblue")) 
+t3_plotred
+```
+
+```{r}
+mean(hs_t3red >= true_t3)
+```
+## Confusion Matrices and ROC Curves
+
+### Full Model 
+
+```{r}
+hs_confusion_fullmod <- tibble(metric = c("tn", "fp", "fn", "tp"))
+for(i in 1:4000){
+  hs_pred_tempfull <- ynewfull[i, ]
+  hs_confusion_tempfull <- tibble(death = heart$DEATH_EVENT, preds = hs_pred_tempfull) %>% 
+    group_by(death, preds) %>% 
+    summarize(n = n())
+  hs_confusion_fullmod[[i+1]] <- hs_confusion_tempfull$n
+}
+
+hs_confusion_matrixfull <- pivot_longer(hs_confusion_fullmod, cols = 2:4001, names_to = "sample", values_to = "value") %>% 
+  pivot_wider(names_from = "metric", values_from = "value") %>% 
+  mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299), mcc = (tn *tp-fn* fp) / sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+```
+
+```{r}
+hs_confusion_matrixfull %>% 
+  summarize(mean_tnr = mean(tnr), mean_tpr = mean(tpr), mean_accuracy = mean(accuracy), mean_mcc = mean(mcc))
+```
+
+```{r}
+predfull <- prediction(fitted(fullmod)[, 1], heart$DEATH_EVENT)
+perffull <- performance(predfull, "tpr", "fpr")
+plot(perffull)
+performance(predfull, "auc")@y.values[[1]]
+```
+
+### Intercept-Only Model
+
+```{r}
+hs_confusion_fullint <- tibble(metric = c("tn", "fp", "fn", "tp"))
+for(i in 1:4000){
+  hs_pred_tempint <- ynewint[i, ]
+  hs_confusion_tempint <- tibble(death = heart$DEATH_EVENT, preds = hs_pred_tempint) %>% 
+    group_by(death, preds) %>% 
+    summarize(n = n())
+  hs_confusion_fullint[[i+1]] <- hs_confusion_tempint$n
+}
+
+hs_confusion_matrixint <- pivot_longer(hs_confusion_fullint, cols = 2:4001, names_to = "sample", values_to = "value") %>% 
+  pivot_wider(names_from = "metric", values_from = "value") %>% 
+  mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299), mcc = (tn *tp-fn* fp) / sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+```
+
+```{r}
+hs_confusion_matrixint %>% 
+  summarize(mean_tnr = mean(tnr), mean_tpr = mean(tpr), mean_accuracy = mean(accuracy), mean_mcc = mean(mcc))
+```
+
+```{r}
+predint <- prediction(fitted(intmod)[, 1], heart$DEATH_EVENT)
+perfint <- performance(predint, "tpr", "fpr")
+plot(perfint)
+performance(predint, "auc")@y.values[[1]]
+```
+
+### Reduced Model
+
+```{r}
+hs_confusion_fullred <- tibble(metric = c("tn", "fp", "fn", "tp"))
+for(i in 1:4000){
+  hs_pred_tempred <- ynewred[i, ]
+  hs_confusion_tempred <- tibble(death = heart$DEATH_EVENT, preds = hs_pred_tempred) %>% 
+    group_by(death, preds) %>% 
+    summarize(n = n())
+  hs_confusion_fullred[[i+1]] <- hs_confusion_tempred$n
+}
+
+hs_confusion_matrixred <- pivot_longer(hs_confusion_fullred, cols = 2:4001, names_to = "sample", values_to = "value") %>% 
+  pivot_wider(names_from = "metric", values_from = "value") %>% 
+  mutate(tnr = tn/(tn + fp), tpr = tp / (tp + fn), fpr = 1 - tpr, accuracy = (tp + tn) / (299), mcc = (tn *tp-fn* fp) / sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+```
+
+```{r}
+hs_confusion_matrixred %>% 
+  summarize(mean_tnr = mean(tnr), mean_tpr = mean(tpr), mean_accuracy = mean(accuracy), mean_mcc = mean(mcc))
+```
+
+```{r}
+predred <- prediction(fitted(redmod)[, 1], heart$DEATH_EVENT)
+perfred <- performance(predred, "tpr", "fpr")
+plot(perfred)
+performance(predred, "auc")@y.values[[1]]
+```
+
